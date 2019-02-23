@@ -1,11 +1,3 @@
-//
-//  CommandTests.swift
-//  SwiftLint
-//
-//  Created by JP Simard on 5/24/17.
-//  Copyright © 2017 Realm. All rights reserved.
-//
-
 import Foundation
 import SourceKittenFramework
 @testable import SwiftLintFramework
@@ -19,7 +11,6 @@ private extension Command {
 }
 
 class CommandTests: XCTestCase {
-
     // MARK: Command Creation
 
     func testNoCommandsInEmptyFile() {
@@ -230,6 +221,47 @@ class CommandTests: XCTestCase {
             violations("print(123)\n// swiftlint:disable:previous nesting\n")[0].ruleDescription.identifier,
             "superfluous_disable_command"
         )
+    }
+
+    func testInvalidDisableCommands() {
+        XCTAssertEqual(
+            violations("// swiftlint:disable nesting_foo\nprint(123)\n")[0].ruleDescription.identifier,
+            "superfluous_disable_command"
+        )
+        XCTAssertEqual(
+            violations("// swiftlint:disable:next nesting_foo\nprint(123)\n")[0].ruleDescription.identifier,
+            "superfluous_disable_command"
+        )
+        XCTAssertEqual(
+            violations("print(123) // swiftlint:disable:this nesting_foo\n")[0].ruleDescription.identifier,
+            "superfluous_disable_command"
+        )
+        XCTAssertEqual(
+            violations("print(123)\n// swiftlint:disable:previous nesting_foo\n")[0].ruleDescription.identifier,
+            "superfluous_disable_command"
+        )
+
+        XCTAssertEqual(
+            violations("print(123)\n// swiftlint:disable:previous nesting_foo \n").count,
+            1
+        )
+
+        let multipleViolations = violations("// swiftlint:disable nesting this is a comment\n")
+        XCTAssertEqual(multipleViolations.count, 5)
+        XCTAssertTrue(multipleViolations.allSatisfy { $0.ruleDescription.identifier == "superfluous_disable_command" })
+
+        let onlyNonExistentRulesViolations = violations("// swiftlint:disable this is a comment\n")
+        XCTAssertEqual(onlyNonExistentRulesViolations.count, 4)
+        XCTAssertTrue(onlyNonExistentRulesViolations.allSatisfy {
+            $0.ruleDescription.identifier == "superfluous_disable_command"
+        })
+
+        XCTAssertEqual(
+            violations("print(123)\n// swiftlint:disable:previous nesting_foo\n")[0].reason,
+            "'nesting_foo' is not a valid SwiftLint rule. Please remove it from the disable command."
+        )
+
+        XCTAssertEqual(violations("/* swiftlint:disable nesting */\n").count, 1)
     }
 
     func testSuperfluousDisableCommandsDisabled() {

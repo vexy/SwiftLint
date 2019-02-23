@@ -1,11 +1,3 @@
-//
-//  String+SwiftLint.swift
-//  SwiftLint
-//
-//  Created by JP Simard on 5/16/15.
-//  Copyright © 2015 Realm. All rights reserved.
-//
-
 import Foundation
 import SourceKittenFramework
 
@@ -33,7 +25,7 @@ extension String {
     internal func nameStrippingLeadingUnderscoreIfPrivate(_ dict: [String: SourceKitRepresentable]) -> String {
         if let aclString = dict.accessibility,
            let acl = AccessControlLevel(identifier: aclString),
-            acl.isPrivate && characters.first == "_" {
+            acl.isPrivate && first == "_" {
             return String(self[index(after: startIndex)...])
         }
         return self
@@ -52,13 +44,12 @@ extension String {
         if let length = length {
             return self[from..<from + length]
         }
-        let index = characters.index(startIndex, offsetBy: from, limitedBy: endIndex)!
-        return String(self[index...])
+        return String(self[index(startIndex, offsetBy: from, limitedBy: endIndex)!...])
     }
 
     internal func lastIndex(of search: String) -> Int? {
         if let range = range(of: search, options: [.literal, .backwards]) {
-            return characters.distance(from: startIndex, to: range.lowerBound)
+            return distance(from: startIndex, to: range.lowerBound)
         }
         return nil
     }
@@ -71,10 +62,17 @@ extension String {
                                  limitedBy: utf16.endIndex) ?? utf16.endIndex
         let to16 = utf16.index(from16, offsetBy: nsrange.length,
                                limitedBy: utf16.endIndex) ?? utf16.endIndex
-        if let from = Index(from16, within: self), let to = Index(to16, within: self) {
-            return from..<to
+
+        guard let fromIndex = Index(from16, within: self),
+            let toIndex = Index(to16, within: self) else {
+                return nil
         }
-        return nil
+
+        return fromIndex..<toIndex
+    }
+
+    internal var fullNSRange: NSRange {
+        return NSRange(location: 0, length: utf16.count)
     }
 
     public func absolutePathStandardized() -> String {
@@ -84,11 +82,7 @@ extension String {
     internal var isFile: Bool {
         var isDirectoryObjC: ObjCBool = false
         if FileManager.default.fileExists(atPath: self, isDirectory: &isDirectoryObjC) {
-            #if os(Linux)
-                return !isDirectoryObjC
-            #else
-                return !isDirectoryObjC.boolValue
-            #endif
+            return !isDirectoryObjC.boolValue
         }
         return false
     }

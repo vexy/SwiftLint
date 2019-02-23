@@ -7,10 +7,18 @@ XCODEFLAGS=-workspace 'SwiftLint.xcworkspace' \
 	DSTROOT=$(TEMPORARY_FOLDER) \
 	OTHER_LDFLAGS=-Wl,-headerpad_max_install_names
 
-BUILT_BUNDLE=$(TEMPORARY_FOLDER)/Applications/swiftlint.app
-SWIFTLINTFRAMEWORK_BUNDLE=$(BUILT_BUNDLE)/Contents/Frameworks/SwiftLintFramework.framework
-SWIFTLINT_EXECUTABLE=$(BUILT_BUNDLE)/Contents/MacOS/swiftlint
-XCTEST_LOCATION=.build/debug/SwiftLintPackageTests.xctest
+SWIFT_BUILD_FLAGS=--configuration release
+UNAME=$(shell uname)
+ifeq ($(UNAME), Darwin)
+SWIFT_BUILD_FLAGS+= -Xswiftc -static-stdlib
+endif
+
+SWIFTLINT_EXECUTABLE=$(shell swift build $(SWIFT_BUILD_FLAGS) --show-bin-path)/swiftlint
+
+TSAN_LIB=$(subst bin/swift,lib/swift/clang/lib/darwin/libclang_rt.tsan_osx_dynamic.dylib,$(shell xcrun --find swift))
+TSAN_SWIFT_BUILD_FLAGS=-Xswiftc -sanitize=thread
+TSAN_TEST_BUNDLE=$(shell swift build $(TSAN_SWIFT_BUILD_FLAGS) --show-bin-path)/SwiftLintPackageTests.xctest
+TSAN_XCTEST=$(shell xcrun --find xctest)
 
 FRAMEWORKS_FOLDER=/Library/Frameworks
 BINARIES_FOLDER=/usr/local/bin
@@ -18,75 +26,86 @@ LICENSE_PATH="$(shell pwd)/LICENSE"
 
 OUTPUT_PACKAGE=SwiftLint.pkg
 
-COMPONENTS_PLIST=Source/swiftlint/Supporting Files/Components.plist
 SWIFTLINT_PLIST=Source/swiftlint/Supporting Files/Info.plist
 SWIFTLINTFRAMEWORK_PLIST=Source/SwiftLintFramework/Supporting Files/Info.plist
 
 VERSION_STRING=$(shell /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(SWIFTLINT_PLIST)")
 
-.PHONY: all bootstrap clean install package test uninstall
+.PHONY: all bootstrap clean build install package test uninstall
 
-all: bootstrap
-	$(BUILD_TOOL) $(XCODEFLAGS) build
+all: build
 
-sourcery:
-	sourcery --sources Tests --templates .sourcery/LinuxMain.stencil --output .sourcery
-	sed -e 4,11d .sourcery/LinuxMain.generated.swift > .sourcery/LinuxMain.swift
-	sed -n 4,10p .sourcery/LinuxMain.generated.swift | cat - .sourcery/LinuxMain.swift > Tests/LinuxMain.swift
-	rm .sourcery/LinuxMain.swift .sourcery/LinuxMain.generated.swift
+sourcery: Source/SwiftLintFramework/Models/MasterRuleList.swift Tests/SwiftLintFrameworkTests/AutomaticRuleTests.generated.swift Tests/LinuxMain.swift
+
+Tests/LinuxMain.swift: Tests/*/*.swift .sourcery/LinuxMain.stencil
+	sourcery --sources Tests --exclude-sources Tests/SwiftLintFrameworkTests/Resources --templates .sourcery/LinuxMain.stencil --output .sourcery --force-parse generated
+	mv .sourcery/LinuxMain.generated.swift Tests/LinuxMain.swift
+
+Source/SwiftLintFramework/Models/MasterRuleList.swift: Source/SwiftLintFramework/Rules/**/*.swift .sourcery/MasterRuleList.stencil
 	sourcery --sources Source/SwiftLintFramework/Rules --templates .sourcery/MasterRuleList.stencil --output .sourcery
-	sed -e 4,11d .sourcery/MasterRuleList.generated.swift > .sourcery/MasterRuleList.swift
-	sed -n 4,10p .sourcery/MasterRuleList.generated.swift | cat - .sourcery/MasterRuleList.swift > Source/SwiftLintFramework/Models/MasterRuleList.swift
-	rm .sourcery/MasterRuleList.swift .sourcery/MasterRuleList.generated.swift
+	mv .sourcery/MasterRuleList.generated.swift Source/SwiftLintFramework/Models/MasterRuleList.swift
+
+Tests/SwiftLintFrameworkTests/AutomaticRuleTests.generated.swift: Source/SwiftLintFramework/Rules/**/*.swift .sourcery/AutomaticRuleTests.stencil
+	sourcery --sources Source/SwiftLintFramework/Rules --templates .sourcery/AutomaticRuleTests.stencil --output .sourcery
+	mv .sourcery/AutomaticRuleTests.generated.swift Tests/SwiftLintFrameworkTests/AutomaticRuleTests.generated.swift
 
 bootstrap:
 	script/bootstrap
 
-test: clean bootstrap
+test: clean_xcode bootstrap
 	$(BUILD_TOOL) $(XCODEFLAGS) test
+
+test_tsan:
+	swift build --build-tests $(TSAN_SWIFT_BUILD_FLAGS)
+	DYLD_INSERT_LIBRARIES=$(TSAN_LIB) $(TSAN_XCTEST) $(TSAN_TEST_BUNDLE)
+
+write_xcodebuild_log: bootstrap
+	xcodebuild -workspace SwiftLint.xcworkspace -scheme swiftlint > xcodebuild.log
+
+analyze: write_xcodebuild_log
+	swift run -c release swiftlint analyze --strict --compiler-log-path xcodebuild.log
+
+analyze_autocorrect: write_xcodebuild_log
+	swift run -c release swiftlint analyze --autocorrect --compiler-log-path xcodebuild.log
 
 clean:
 	rm -f "$(OUTPUT_PACKAGE)"
 	rm -rf "$(TEMPORARY_FOLDER)"
-	$(BUILD_TOOL) $(XCODEFLAGS) -configuration Debug clean
-	$(BUILD_TOOL) $(XCODEFLAGS) -configuration Release clean
+	rm -f "./portable_swiftlint.zip"
+	swift package clean
+
+clean_xcode:
 	$(BUILD_TOOL) $(XCODEFLAGS) -configuration Test clean
 
-install: uninstall package
-	sudo installer -pkg SwiftLint.pkg -target /
+build:
+	swift build $(SWIFT_BUILD_FLAGS)
+
+build_with_disable_sandbox:
+	swift build --disable-sandbox $(SWIFT_BUILD_FLAGS)
+
+install: build
+	install -d "$(BINARIES_FOLDER)"
+	install "$(SWIFTLINT_EXECUTABLE)" "$(BINARIES_FOLDER)"
 
 uninstall:
 	rm -rf "$(FRAMEWORKS_FOLDER)/SwiftLintFramework.framework"
 	rm -f "$(BINARIES_FOLDER)/swiftlint"
 
-installables: clean bootstrap
-	$(BUILD_TOOL) $(XCODEFLAGS) -configuration Release install
+installables: build
+	install -d "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)"
+	install "$(SWIFTLINT_EXECUTABLE)" "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)"
 
-	mkdir -p "$(TEMPORARY_FOLDER)$(FRAMEWORKS_FOLDER)" "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)"
-	mv -f "$(SWIFTLINTFRAMEWORK_BUNDLE)" "$(TEMPORARY_FOLDER)$(FRAMEWORKS_FOLDER)/SwiftLintFramework.framework"
-	mv -f "$(SWIFTLINT_EXECUTABLE)" "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)/swiftlint"
-	rm -rf "$(BUILT_BUNDLE)"
-	install_name_tool -delete_rpath "@executable_path/../Frameworks/SwiftLintFramework.framework/Versions/Current/Frameworks" "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)/swiftlint"
-
-prefix_install: installables
-	mkdir -p "$(PREFIX)/Frameworks" "$(PREFIX)/bin"
-	cp -Rf "$(TEMPORARY_FOLDER)$(FRAMEWORKS_FOLDER)/SwiftLintFramework.framework" "$(PREFIX)/Frameworks/"
-	cp -f "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)/swiftlint" "$(PREFIX)/bin/"
-	install_name_tool -rpath "/Library/Frameworks/SwiftLintFramework.framework/Versions/Current/Frameworks" "@executable_path/../Frameworks/SwiftLintFramework.framework/Versions/Current/Frameworks" "$(PREFIX)/bin/swiftlint"
-	install_name_tool -rpath "/Library/Frameworks" "@executable_path/../Frameworks" "$(PREFIX)/bin/swiftlint"
+prefix_install: build_with_disable_sandbox
+	install -d "$(PREFIX)/bin/"
+	install "$(SWIFTLINT_EXECUTABLE)" "$(PREFIX)/bin/"
 
 portable_zip: installables
-	cp -Rf "$(TEMPORARY_FOLDER)$(FRAMEWORKS_FOLDER)/SwiftLintFramework.framework" "$(TEMPORARY_FOLDER)"
 	cp -f "$(TEMPORARY_FOLDER)$(BINARIES_FOLDER)/swiftlint" "$(TEMPORARY_FOLDER)"
-	install_name_tool -rpath "/Library/Frameworks/SwiftLintFramework.framework/Versions/Current/Frameworks" "@executable_path/SwiftLintFramework.framework/Versions/Current/Frameworks" "$(TEMPORARY_FOLDER)/swiftlint"
-	install_name_tool -rpath "/Library/Frameworks" "@executable_path" "$(TEMPORARY_FOLDER)/swiftlint"
-	rm -f "./portable_swiftlint.zip"
 	cp -f "$(LICENSE_PATH)" "$(TEMPORARY_FOLDER)"
-	(cd "$(TEMPORARY_FOLDER)"; zip -yr - "swiftlint" "SwiftLintFramework.framework" "LICENSE") > "./portable_swiftlint.zip"
+	(cd "$(TEMPORARY_FOLDER)"; zip -yr - "swiftlint" "LICENSE") > "./portable_swiftlint.zip"
 
 package: installables
 	pkgbuild \
-		--component-plist "$(COMPONENTS_PLIST)" \
 		--identifier "io.realm.swiftlint" \
 		--install-location "/" \
 		--root "$(TEMPORARY_FOLDER)" \
@@ -100,8 +119,7 @@ archive:
 release: package archive portable_zip
 
 docker_test:
-	if [ -d $(XCTEST_LOCATION) ]; then rm -rf $(XCTEST_LOCATION); fi
-	docker run -v `pwd`:`pwd` -w `pwd` --name swiftlint --rm norionomura/swift:40 swift test --parallel
+	docker run -v `pwd`:`pwd` -w `pwd` --name swiftlint --rm norionomura/swift:42 swift test --parallel
 
 docker_htop:
 	docker run -it --rm --pid=container:swiftlint terencewestphal/htop || reset
@@ -112,13 +130,16 @@ display_compilation_time:
 
 publish:
 	brew update && brew bump-formula-pr --tag=$(shell git describe --tags) --revision=$(shell git rev-parse HEAD) swiftlint
-	pod trunk push SwiftLintFramework.podspec
-	pod trunk push SwiftLint.podspec
+	pod trunk push SwiftLintFramework.podspec --swift-version=4.2
+	pod trunk push SwiftLint.podspec --swift-version=4.2
 
 get_version:
 	@echo $(VERSION_STRING)
 
 push_version:
+ifneq ($(strip $(shell git status --untracked-files=no --porcelain 2>/dev/null)),)
+	$(error git state is not clean)
+endif
 	$(eval NEW_VERSION_AND_NAME := $(filter-out $@,$(MAKECMDGOALS)))
 	$(eval NEW_VERSION := $(shell echo $(NEW_VERSION_AND_NAME) | sed 's/:.*//' ))
 	@sed -i '' 's/## Master/## $(NEW_VERSION_AND_NAME)/g' CHANGELOG.md

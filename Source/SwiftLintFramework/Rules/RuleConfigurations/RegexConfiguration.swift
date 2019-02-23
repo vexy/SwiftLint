@@ -1,15 +1,7 @@
-//
-//  RegexConfiguration.swift
-//  SwiftLint
-//
-//  Created by Scott Hoyt on 1/21/16.
-//  Copyright © 2016 Realm. All rights reserved.
-//
-
 import Foundation
 import SourceKittenFramework
 
-public struct RegexConfiguration: RuleConfiguration, Equatable, CacheDescriptionProvider {
+public struct RegexConfiguration: RuleConfiguration, Hashable, CacheDescriptionProvider {
     public let identifier: String
     public var name: String?
     public var message = "Regex matched."
@@ -28,16 +20,17 @@ public struct RegexConfiguration: RuleConfiguration, Equatable, CacheDescription
     }
 
     internal var cacheDescription: String {
-        var dict = [String: Any]()
-        dict["identifier"] = identifier
-        dict["name"] = name
-        dict["message"] = message
-        dict["regex"] = regex.pattern
-        dict["included"] = included?.pattern
-        dict["excluded"] = excluded?.pattern
-        dict["match_kinds"] = matchKinds.map { $0.rawValue }
-        dict["severity"] = severityConfiguration.consoleDescription
-        if let jsonData = try? JSONSerialization.data(withJSONObject: dict),
+        let jsonObject: [String] = [
+            identifier,
+            name ?? "",
+            message,
+            regex.pattern,
+            included?.pattern ?? "",
+            excluded?.pattern ?? "",
+            matchKinds.map({ $0.rawValue }).sorted(by: <).joined(separator: ","),
+            severityConfiguration.consoleDescription
+        ]
+        if let jsonData = try? JSONSerialization.data(withJSONObject: jsonObject),
           let jsonString = String(data: jsonData, encoding: .utf8) {
               return jsonString
         }
@@ -82,14 +75,8 @@ public struct RegexConfiguration: RuleConfiguration, Equatable, CacheDescription
             try severityConfiguration.apply(configuration: severityString)
         }
     }
-}
 
-public func == (lhs: RegexConfiguration, rhs: RegexConfiguration) -> Bool {
-    return lhs.identifier == rhs.identifier &&
-           lhs.message == rhs.message &&
-           lhs.regex == rhs.regex &&
-           lhs.included?.pattern == rhs.included?.pattern &&
-           lhs.excluded?.pattern == rhs.excluded?.pattern &&
-           lhs.matchKinds == rhs.matchKinds &&
-           lhs.severity == rhs.severity
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(identifier)
+    }
 }

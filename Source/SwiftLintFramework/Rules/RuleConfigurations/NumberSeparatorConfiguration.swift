@@ -1,15 +1,8 @@
-//
-//  NumberSeparatorConfiguration.swift
-//  SwiftLint
-//
-//  Created by Marcelo Fabri on 01/02/17.
-//  Copyright © 2017 Realm. All rights reserved.
-//
-
 public struct NumberSeparatorConfiguration: RuleConfiguration, Equatable {
     private(set) var severityConfiguration = SeverityConfiguration(.warning)
     private(set) var minimumLength: Int
     private(set) var minimumFractionLength: Int?
+    private(set) var excludeRanges: [Range<Double>]
 
     public var consoleDescription: String {
         let minimumFractionLengthDescription: String
@@ -23,9 +16,10 @@ public struct NumberSeparatorConfiguration: RuleConfiguration, Equatable {
             + minimumFractionLengthDescription
     }
 
-    public init(minimumLength: Int, minimumFractionLength: Int?) {
+    public init(minimumLength: Int, minimumFractionLength: Int?, excludeRanges: [Range<Double>]) {
         self.minimumLength = minimumLength
         self.minimumFractionLength = minimumFractionLength
+        self.excludeRanges = excludeRanges
     }
 
     public mutating func apply(configuration: Any) throws {
@@ -41,15 +35,15 @@ public struct NumberSeparatorConfiguration: RuleConfiguration, Equatable {
             self.minimumFractionLength = minimumFractionLength
         }
 
+        if let excludeRanges = configuration["exclude_ranges"] as? [[String: Any]] {
+            self.excludeRanges = excludeRanges.compactMap { dict in
+                guard let min = dict["min"] as? Double, let max = dict["max"] as? Double else { return nil }
+                return min ..< max
+            }
+        }
+
         if let severityString = configuration["severity"] as? String {
             try severityConfiguration.apply(configuration: severityString)
         }
-    }
-
-    public static func == (lhs: NumberSeparatorConfiguration,
-                           rhs: NumberSeparatorConfiguration) -> Bool {
-        return lhs.minimumLength == rhs.minimumLength &&
-            lhs.minimumFractionLength == rhs.minimumFractionLength &&
-            lhs.severityConfiguration == rhs.severityConfiguration
     }
 }

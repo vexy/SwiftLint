@@ -1,13 +1,4 @@
-//
-//  PrivateUnitTestConfiguration.swift
-//  SwiftLint
-//
-//  Created by Cristian Filipov on 8/5/16.
-//  Copyright © 2016 Realm. All rights reserved.
-//
-
 import Foundation
-import SourceKittenFramework
 
 public struct PrivateUnitTestConfiguration: RuleConfiguration, Equatable, CacheDescriptionProvider {
     public let identifier: String
@@ -26,14 +17,15 @@ public struct PrivateUnitTestConfiguration: RuleConfiguration, Equatable, CacheD
     }
 
     internal var cacheDescription: String {
-        var dict = [String: Any]()
-        dict["identifier"] = identifier
-        dict["name"] = name
-        dict["message"] = message
-        dict["regex"] = regex.pattern
-        dict["included"] = included?.pattern
-        dict["severity"] = severityConfiguration.consoleDescription
-        if let jsonData = try? JSONSerialization.data(withJSONObject: dict),
+        let jsonObject: [String] = [
+            identifier,
+            name ?? "",
+            message,
+            regex.pattern,
+            included?.pattern ?? "",
+            severityConfiguration.consoleDescription
+        ]
+        if let jsonData = try? JSONSerialization.data(withJSONObject: jsonObject),
           let jsonString = String(data: jsonData, encoding: .utf8) {
               return jsonString
         }
@@ -64,12 +56,4 @@ public struct PrivateUnitTestConfiguration: RuleConfiguration, Equatable, CacheD
             try severityConfiguration.apply(configuration: severityString)
         }
     }
-}
-
-public func == (lhs: PrivateUnitTestConfiguration, rhs: PrivateUnitTestConfiguration) -> Bool {
-    return lhs.identifier == rhs.identifier &&
-        lhs.message == rhs.message &&
-        lhs.regex == rhs.regex &&
-        lhs.included?.pattern == rhs.included?.pattern &&
-        lhs.severity == rhs.severity
 }

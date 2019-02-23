@@ -4,7 +4,7 @@ SwiftLint는 스위프트 스타일 및 컨벤션을 강제하기 위한 도구�
 
 SwiftLint는 좀 더 정확한 결과를 위해 [Clang](http://clang.llvm.org)과 [SourceKit](http://www.jpsim.com/uncovering-sourcekit)에 연결하여 소스 파일의 [AST](http://clang.llvm.org/docs/IntroductionToTheClangAST.html) 표현을 사용합니다.
 
-![Test Status](https://travis-ci.org/realm/SwiftLint.svg?branch=master)
+[![Build Status](https://dev.azure.com/jpsim/SwiftLint/_apis/build/status/realm.SwiftLint?branchName=master)](https://dev.azure.com/jpsim/SwiftLint/_build/latest?definitionId=4?branchName=master)
 [![codecov.io](https://codecov.io/github/realm/SwiftLint/coverage.svg?branch=master)](https://codecov.io/github/realm/SwiftLint?branch=master)
 
 ![](assets/screenshot.png)
@@ -32,6 +32,11 @@ pod 'SwiftLint'
 CocoaPods를 사용하면 최신 버전 외에도 SwiftLint의 특정 버전을 설치할 수 있기 때문에 이 방법을 권장합니다. (Homebrew는 최신 버전만 설치 가능)
 
 이렇게 했을때 SwiftLint 바이너리 및 그에 종속된 바이너리들과 스위프트 바이너리까지 `Pods/` 디렉토리에 추가되기 때문에, git 등의 SCM에 이런 디렉토리들을 체크인하는 것은 권장하지 않습니다.
+
+### [Mint](https://github.com/yonaskolb/mint)를 사용하는 경우:
+```
+$ mint install realm/SwiftLint
+```
 
 ### 빌드된 패키지를 사용하는 경우:
 
@@ -82,6 +87,21 @@ AppCode에서 SwiftLint를 사용하려면 [이 플러그인](https://plugins.je
 ### Atom
 
 [Atom](https://atom.io/)에서 SwiftLint를 사용하려면 APM에서 [`linter-swiftlint`](https://atom.io/packages/linter-swiftlint) 패키지를 설치합니다.
+
+### fastlane
+
+fastlane 과정에서 SwiftLint를 사용하려면 [공식적인 fastlane 액션](https://docs.fastlane.tools/actions/swiftlint)를 사용할 수 있습니다.
+
+```ruby
+swiftlint(
+  mode: :lint,                            # SwiftLint 모드: :lint (디폴트) 아니면 :autocorrect
+  executable: "Pods/SwiftLint/swiftlint", # SwiftLint 바이너리 경로 (선택 가능). CocoaPods를 사용해서 설치한 경우는 이 옾션이 중요합니다
+  output_file: "swiftlint.result.json",   # 결과 파일의 경로 (선택 가능)
+  reporter: "json",                       # 보고 유형 (선택 가능)
+  config_file: ".swiftlint-ci.yml",       # 설정 파일의 경로 (선택 가능)
+  ignore_exit_status: true                # SwiftLint 종료할 때 0이 아닌 반환한 종료 코드를 무시해서 fastlane 계속 실행합니다
+)
+```
 
 ### 커맨드 라인
 
@@ -238,7 +258,7 @@ identifier_name:
     - id
     - URL
     - GlobalAPIKey
-reporter: "xcode" # 보고 유형 (xcode, json, csv, checkstyle, junit, html, emoji)
+reporter: "xcode" # 보고 유형 (xcode, json, csv, checkstyle, junit, html, emoji, markdown)
 ```
 
 #### 커스텀 룰 정의
