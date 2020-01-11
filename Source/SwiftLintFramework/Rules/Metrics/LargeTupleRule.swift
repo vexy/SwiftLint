@@ -54,8 +54,8 @@ public struct LargeTupleRule: ASTRule, ConfigurationProviderRule, AutomaticTesta
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         let offsets = violationOffsetsForTypes(in: file, dictionary: dictionary, kind: kind) +
             violationOffsetsForFunctions(in: file, dictionary: dictionary, kind: kind)
 
@@ -72,7 +72,7 @@ public struct LargeTupleRule: ASTRule, ConfigurationProviderRule, AutomaticTesta
         }
     }
 
-    private func violationOffsetsForTypes(in file: File, dictionary: [String: SourceKitRepresentable],
+    private func violationOffsetsForTypes(in file: SwiftLintFile, dictionary: SourceKittenDictionary,
                                           kind: SwiftDeclarationKind) -> [(offset: Int, size: Int)] {
         let kinds = SwiftDeclarationKind.variableKinds.subtracting([.varLocal])
         guard kinds.contains(kind),
@@ -85,9 +85,9 @@ public struct LargeTupleRule: ASTRule, ConfigurationProviderRule, AutomaticTesta
         return sizes.max().flatMap { [(offset: offset, size: $0)] } ?? []
     }
 
-    private func violationOffsetsForFunctions(in file: File, dictionary: [String: SourceKitRepresentable],
+    private func violationOffsetsForFunctions(in file: SwiftLintFile, dictionary: SourceKittenDictionary,
                                               kind: SwiftDeclarationKind) -> [(offset: Int, size: Int)] {
-        let contents = file.contents.bridge()
+        let contents = file.stringView
         guard SwiftDeclarationKind.functionKinds.contains(kind),
             let returnRange = returnRangeForFunction(dictionary: dictionary),
             let returnSubstring = contents.substringWithByteRange(start: returnRange.location,
@@ -110,7 +110,7 @@ public struct LargeTupleRule: ASTRule, ConfigurationProviderRule, AutomaticTesta
         for (range, kind) in ranges {
             let substring = text.substring(with: range)
             if kind != .generic,
-                let byteRange = text.NSRangeToByteRange(start: range.location, length: range.length),
+                let byteRange = StringView(text).NSRangeToByteRange(start: range.location, length: range.length),
                 !containsReturnArrow(in: text.bridge(), range: range) {
                 let size = substring.components(separatedBy: ",").count
                 let offset = byteRange.location + initialOffset
@@ -124,7 +124,7 @@ public struct LargeTupleRule: ASTRule, ConfigurationProviderRule, AutomaticTesta
         return offsets
     }
 
-    private func returnRangeForFunction(dictionary: [String: SourceKitRepresentable]) -> NSRange? {
+    private func returnRangeForFunction(dictionary: SourceKittenDictionary) -> NSRange? {
         guard let nameOffset = dictionary.nameOffset,
             let nameLength = dictionary.nameLength,
             let length = dictionary.length,

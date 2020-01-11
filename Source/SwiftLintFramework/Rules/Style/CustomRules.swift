@@ -60,7 +60,7 @@ public struct CustomRules: Rule, ConfigurationProviderRule, CacheDescriptionProv
 
     public init() {}
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         var configurations = configuration.customRuleConfigurations
 
         guard !configurations.isEmpty else {
@@ -68,7 +68,7 @@ public struct CustomRules: Rule, ConfigurationProviderRule, CacheDescriptionProv
         }
 
         if let path = file.path {
-            let pathRange = NSRange(location: 0, length: path.bridge().length)
+            let pathRange = path.fullNSRange
             configurations = configurations.filter { config in
                 let included: Bool
                 if let includedRegex = config.included {
@@ -88,8 +88,9 @@ public struct CustomRules: Rule, ConfigurationProviderRule, CacheDescriptionProv
 
         return configurations.flatMap { configuration -> [StyleViolation] in
             let pattern = configuration.regex.pattern
+            let captureGroup = configuration.captureGroup
             let excludingKinds = SyntaxKind.allKinds.subtracting(configuration.matchKinds)
-            return file.match(pattern: pattern, excludingSyntaxKinds: excludingKinds).map({
+            return file.match(pattern: pattern, excludingSyntaxKinds: excludingKinds, captureGroup: captureGroup).map({
                 StyleViolation(ruleDescription: configuration.description,
                                severity: configuration.severity,
                                location: Location(file: file, characterOffset: $0.location),

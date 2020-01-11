@@ -1,12 +1,6 @@
 import Foundation
 import SourceKittenFramework
 
-private let nonSpace = "[^ ]"
-private let twoOrMoreSpace = " {2,}"
-private let mark = "MARK:"
-private let nonSpaceOrTwoOrMoreSpace = "(?:\(nonSpace)|\(twoOrMoreSpace))"
-private let nonSpaceOrTwoOrMoreSpaceOrNewline = "(?:[^ \n]|\(twoOrMoreSpace))"
-
 public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
     public var configuration = SeverityConfiguration(.warning)
 
@@ -47,6 +41,8 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
             "↓// MARKL:",
             "↓// MARKR ",
             "↓// MARKK -",
+            "↓/// MARK:",
+            "↓/// MARK bad",
             issue1029Example
         ],
         corrections: [
@@ -66,6 +62,8 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
             "↓// MARKL: -": "// MARK: -",
             "↓// MARKK ": "// MARK: ",
             "↓// MARKK -": "// MARK: -",
+            "↓/// MARK:": "// MARK:",
+            "↓/// MARK comment": "// MARK: comment",
             issue1029Example: issue1029Correction
         ]
     )
@@ -89,6 +87,7 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
     private let oneOrMoreSpacesBeforeColonPattern = "(?:// ?MARK +:)"
     private let nonWhitespaceBeforeColonPattern = "(?:// ?MARK\\S+:)"
     private let nonWhitespaceNorColonBeforeSpacesPattern = "(?:// ?MARK[^\\s:]* +)"
+    private let threeSlashesInsteadOfTwo = "/// MARK:?"
 
     private var pattern: String {
         return [
@@ -96,11 +95,12 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
             invalidEndSpacesPattern,
             invalidSpacesAfterHyphenPattern,
             invalidLowercasePattern,
-            missingColonPattern
+            missingColonPattern,
+            threeSlashesInsteadOfTwo
         ].joined(separator: "|")
     }
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         return violationRanges(in: file, matching: pattern).map {
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.severity,
@@ -108,7 +108,7 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
         }
     }
 
-    public func correct(file: File) -> [Correction] {
+    public func correct(file: SwiftLintFile) -> [Correction] {
         var result = [Correction]()
 
         result.append(contentsOf: correct(file: file,
@@ -152,10 +152,14 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
                                           pattern: invalidLowercasePattern,
                                           replaceString: "// MARK:"))
 
+        result.append(contentsOf: correct(file: file,
+                                          pattern: threeSlashesInsteadOfTwo,
+                                          replaceString: "// MARK:"))
+
         return result.unique
     }
 
-    private func correct(file: File,
+    private func correct(file: SwiftLintFile,
                          pattern: String,
                          replaceString: String,
                          keepLastChar: Bool = false) -> [Correction] {
@@ -178,12 +182,14 @@ public struct MarkRule: CorrectableRule, ConfigurationProviderRule {
         return corrections
     }
 
-    private func violationRanges(in file: File, matching pattern: String) -> [NSRange] {
-        let nsstring = file.contents.bridge()
+    private func violationRanges(in file: SwiftLintFile, matching pattern: String) -> [NSRange] {
         return file.rangesAndTokens(matching: pattern).filter { _, syntaxTokens in
-            return !syntaxTokens.isEmpty && SyntaxKind(rawValue: syntaxTokens[0].type) == .comment
+            guard let syntaxKind = syntaxTokens.first?.kind else {
+                return false
+            }
+            return !syntaxTokens.isEmpty && SyntaxKind.commentKinds.contains(syntaxKind)
         }.compactMap { range, syntaxTokens in
-            let identifierRange = nsstring
+            let identifierRange = file.stringView
                 .byteRangeToNSRange(start: syntaxTokens[0].offset, length: 0)
             return identifierRange.map { NSUnionRange($0, range) }
         }
@@ -201,3 +207,12 @@ private let issue1029Correction = "// MARK: - Top-Level bad mark\n" +
                                  "struct MarkTest {}\n" +
                                  "// MARK: - Bad mark\n" +
                                  "extension MarkTest {}\n"
+
+// These need to be at the bottom of the file to work around https://bugs.swift.org/browse/SR-10486
+
+private let nonSpace = "[^ ]"
+private let twoOrMoreSpace = " {2,}"
+private let mark = "MARK:"
+private let nonSpaceOrTwoOrMoreSpace = "(?:\(nonSpace)|\(twoOrMoreSpace))"
+
+private let nonSpaceOrTwoOrMoreSpaceOrNewline = "(?:[^ \n]|\(twoOrMoreSpace))"

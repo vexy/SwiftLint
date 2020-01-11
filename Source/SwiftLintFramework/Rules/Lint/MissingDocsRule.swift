@@ -1,7 +1,7 @@
 import SourceKittenFramework
 
-private extension File {
-    func missingDocOffsets(in dictionary: [String: SourceKitRepresentable],
+private extension SwiftLintFile {
+    func missingDocOffsets(in dictionary: SourceKittenDictionary,
                            acls: [AccessControlLevel]) -> [(Int, AccessControlLevel)] {
         if dictionary.enclosedSwiftAttributes.contains(.override) ||
             !dictionary.inheritedTypes.isEmpty {
@@ -10,10 +10,14 @@ private extension File {
         let substructureOffsets = dictionary.substructure.flatMap {
             missingDocOffsets(in: $0, acls: acls)
         }
-        guard (dictionary.kind).flatMap(SwiftDeclarationKind.init) != nil,
+        let extensionKinds: Set<SwiftDeclarationKind> = [.extension, .extensionEnum, .extensionClass,
+                                                         .extensionStruct, .extensionProtocol]
+        guard let kind = dictionary.declarationKind,
+            !extensionKinds.contains(kind),
+            case let isDeinit = kind == .functionMethodInstance && dictionary.name == "deinit",
+            !isDeinit,
             let offset = dictionary.offset,
-            let accessibility = dictionary.accessibility,
-            let acl = AccessControlLevel(identifier: accessibility),
+            let acl = dictionary.accessibility,
             acls.contains(acl) else {
                 return substructureOffsets
         }
@@ -46,7 +50,16 @@ public struct MissingDocsRule: OptInRule, ConfigurationProviderRule, AutomaticTe
             "/// docs\npublic class B: A { override public func b() {} }\n",
             // externally-defined superclass member is documented, but subclass member is not
             "import Foundation\n/// docs\npublic class B: NSObject {\n" +
-            "// no docs\noverride public var description: String { fatalError() } }\n"
+            "// no docs\noverride public var description: String { fatalError() } }\n",
+            """
+            /// docs
+            public class A {
+                deinit {}
+            }
+            """,
+            """
+            public extension A {}
+            """
         ],
         triggeringExamples: [
             // public, undocumented
@@ -61,9 +74,10 @@ public struct MissingDocsRule: OptInRule, ConfigurationProviderRule, AutomaticTe
         ]
     )
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         let acls = configuration.parameters.map { $0.value }
-        return file.missingDocOffsets(in: file.structure.dictionary,
+        let dict = file.structureDictionary
+        return file.missingDocOffsets(in: dict,
                                       acls: acls).map { (offset: Int, acl: AccessControlLevel) in
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.parameters.first { $0.value == acl }?.severity ?? .warning,

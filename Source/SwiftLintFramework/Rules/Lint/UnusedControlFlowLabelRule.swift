@@ -89,8 +89,8 @@ public struct UnusedControlFlowLabelRule: SubstitutionCorrectableASTRule, Config
 
     private static let kinds: Set<StatementKind> = [.if, .for, .forEach, .while, .repeatWhile, .switch]
 
-    public func validate(file: File, kind: StatementKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: StatementKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         return self.violationRanges(in: file, kind: kind, dictionary: dictionary).map { range in
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.severity,
@@ -98,9 +98,9 @@ public struct UnusedControlFlowLabelRule: SubstitutionCorrectableASTRule, Config
         }
     }
 
-    public func substitution(for violationRange: NSRange, in file: File) -> (NSRange, String) {
+    public func substitution(for violationRange: NSRange, in file: SwiftLintFile) -> (NSRange, String)? {
         var rangeToRemove = violationRange
-        let contentsNSString = file.contents.bridge()
+        let contentsNSString = file.stringView
         if let byteRange = contentsNSString.NSRangeToByteRange(start: violationRange.location,
                                                                length: violationRange.length),
             let nextToken = file.syntaxMap.tokens.first(where: { $0.offset > byteRange.location }),
@@ -111,16 +111,16 @@ public struct UnusedControlFlowLabelRule: SubstitutionCorrectableASTRule, Config
         return (rangeToRemove, "")
     }
 
-    public func violationRanges(in file: File, kind: StatementKind,
-                                dictionary: [String: SourceKitRepresentable]) -> [NSRange] {
+    public func violationRanges(in file: SwiftLintFile, kind: StatementKind,
+                                dictionary: SourceKittenDictionary) -> [NSRange] {
         guard type(of: self).kinds.contains(kind),
             let offset = dictionary.offset, let length = dictionary.length,
             case let byteRange = NSRange(location: offset, length: length),
             case let tokens = file.syntaxMap.tokens(inByteRange: byteRange),
             let firstToken = tokens.first,
-            SyntaxKind(rawValue: firstToken.type) == .identifier,
+            firstToken.kind == .identifier,
             let tokenContent = file.contents(for: firstToken),
-            case let contents = file.contents.bridge(),
+            case let contents = file.stringView,
             let range = contents.byteRangeToNSRange(start: offset, length: length) else {
                 return []
         }

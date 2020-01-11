@@ -15,9 +15,9 @@ public struct MultilineArgumentsRule: ASTRule, OptInRule, ConfigurationProviderR
         triggeringExamples: MultilineArgumentsRuleExamples.triggeringExamples
     )
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: SwiftExpressionKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard
             kind == .call,
             case let arguments = dictionary.enclosedArguments,
@@ -51,9 +51,9 @@ public struct MultilineArgumentsRule: ASTRule, OptInRule, ConfigurationProviderR
     // MARK: - Violation Logic
 
     private func findViolations(in arguments: [Argument],
-                                dictionary: [String: SourceKitRepresentable],
-                                file: File) -> [Argument] {
-        guard case let contents = file.contents.bridge(),
+                                dictionary: SourceKittenDictionary,
+                                file: SwiftLintFile) -> [Argument] {
+        guard case let contents = file.stringView,
             let nameOffset = dictionary.nameOffset,
             let (nameLine, _) = contents.lineAndCharacter(forByteOffset: nameOffset) else {
                 return []
@@ -90,7 +90,7 @@ public struct MultilineArgumentsRule: ASTRule, OptInRule, ConfigurationProviderR
 
     private func removeViolationsBeforeFirstClosure(arguments: [Argument],
                                                     violations: [Argument],
-                                                    file: File) -> [Argument] {
+                                                    file: SwiftLintFile) -> [Argument] {
         guard let firstClosure = arguments.first(where: isClosure(in: file)),
             let firstArgument = arguments.first else {
             return violations
@@ -110,20 +110,20 @@ public struct MultilineArgumentsRule: ASTRule, OptInRule, ConfigurationProviderR
 
     // MARK: - Syntax Helpers
 
-    private func isTrailingClosure(dictionary: [String: SourceKitRepresentable], file: File) -> Bool {
+    private func isTrailingClosure(dictionary: SourceKittenDictionary, file: SwiftLintFile) -> Bool {
         guard let offset = dictionary.offset,
             let length = dictionary.length,
             case let start = min(offset, offset + length - 1),
-            let text = file.contents.bridge().substringWithByteRange(start: start, length: length) else {
+            let text = file.stringView.substringWithByteRange(start: start, length: length) else {
                 return false
         }
 
         return !text.hasSuffix(")")
     }
 
-    private func isClosure(in file: File) -> (Argument) -> Bool {
+    private func isClosure(in file: SwiftLintFile) -> (Argument) -> Bool {
         return { argument in
-            let contents = file.contents.bridge()
+            let contents = file.stringView
             let closureMatcher = regex("^\\s*\\{")
             guard let range = contents.byteRangeToNSRange(start: argument.bodyOffset,
                                                           length: argument.bodyLength),
@@ -145,9 +145,9 @@ private struct Argument {
     let bodyOffset: Int
     let bodyLength: Int
 
-    init?(dictionary: [String: SourceKitRepresentable], file: File, index: Int) {
+    init?(dictionary: SourceKittenDictionary, file: SwiftLintFile, index: Int) {
         guard let offset = dictionary.offset,
-            let (line, _) = file.contents.bridge().lineAndCharacter(forByteOffset: offset),
+            let (line, _) = file.stringView.lineAndCharacter(forByteOffset: offset),
             let bodyOffset = dictionary.bodyOffset,
             let bodyLength = dictionary.bodyLength else {
             return nil

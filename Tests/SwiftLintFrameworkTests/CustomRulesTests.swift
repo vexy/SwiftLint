@@ -1,4 +1,3 @@
-import Foundation
 import SourceKittenFramework
 @testable import SwiftLintFramework
 import XCTest
@@ -60,7 +59,7 @@ class CustomRulesTests: XCTestCase {
     func testCustomRules() {
         let (regexConfig, customRules) = getCustomRules()
 
-        let file = File(contents: "// My file with\n// a pattern")
+        let file = SwiftLintFile(contents: "// My file with\n// a pattern")
         XCTAssertEqual(customRules.validate(file: file),
                        [StyleViolation(ruleDescription: regexConfig.description,
                                        severity: .warning,
@@ -70,13 +69,13 @@ class CustomRulesTests: XCTestCase {
 
     func testLocalDisableCustomRule() {
         let (_, customRules) = getCustomRules()
-        let file = File(contents: "//swiftlint:disable custom \n// file with a pattern")
+        let file = SwiftLintFile(contents: "//swiftlint:disable custom \n// file with a pattern")
         XCTAssertEqual(customRules.validate(file: file), [])
     }
 
     func testLocalDisableCustomRuleWithMultipleRules() {
         let (configs, customRules) = getCustomRulesWithTwoRules()
-        let file = File(contents: "//swiftlint:disable \(configs.1.identifier) \n// file with a pattern")
+        let file = SwiftLintFile(contents: "//swiftlint:disable \(configs.1.identifier) \n// file with a pattern")
         XCTAssertEqual(customRules.validate(file: file),
                        [StyleViolation(ruleDescription: configs.0.description,
                                        severity: .warning,
@@ -113,9 +112,18 @@ class CustomRulesTests: XCTestCase {
         XCTAssertEqual(violations.count, 0)
     }
 
-    private func getCustomRules(_ extraConfig: [String: String] = [:]) -> (RegexConfiguration, CustomRules) {
-        var config = ["regex": "pattern",
-                      "match_kinds": "comment"]
+    func testCustomRulesCaptureGroup() {
+        let (_, customRules) = getCustomRules(["regex": #"\ba\s+(\w+)"#,
+                                               "capture_group": 1])
+        let violations = customRules.validate(file: getTestTextFile())
+        XCTAssertEqual(violations.count, 1)
+        XCTAssertEqual(violations[0].location.line, 2)
+        XCTAssertEqual(violations[0].location.character, 6)
+    }
+
+    private func getCustomRules(_ extraConfig: [String: Any] = [:]) -> (RegexConfiguration, CustomRules) {
+        var config: [String: Any] = ["regex": "pattern",
+                                     "match_kinds": "comment"]
         extraConfig.forEach { config[$0] = $1 }
 
         var regexConfig = RegexConfiguration(identifier: "custom")
@@ -162,7 +170,7 @@ class CustomRulesTests: XCTestCase {
         return ((regexConfig1, regexConfig2), customRules)
     }
 
-    private func getTestTextFile() -> File {
-        return File(path: "\(testResourcesPath)/test.txt")!
+    private func getTestTextFile() -> SwiftLintFile {
+        return SwiftLintFile(path: "\(testResourcesPath)/test.txt")!
     }
 }

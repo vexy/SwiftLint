@@ -1,16 +1,9 @@
 import Dispatch
 import Foundation
-import SourceKittenFramework
 
 extension Array where Element: NSTextCheckingResult {
     func ranges() -> [NSRange] {
         return map { $0.range }
-    }
-}
-
-extension Array where Element == SyntaxToken {
-    var kinds: [SyntaxKind] {
-        return compactMap { SyntaxKind(rawValue: $0.type) }
     }
 }
 
@@ -45,11 +38,11 @@ extension Array {
             return (copy[0..<pivot], copy[pivot..<count])
     }
 
-    func parallelFlatMap<T>(transform: @escaping ((Element) -> [T])) -> [T] {
+    func parallelFlatMap<T>(transform: (Element) -> [T]) -> [T] {
         return parallelMap(transform: transform).flatMap { $0 }
     }
 
-    func parallelCompactMap<T>(transform: @escaping ((Element) -> T?)) -> [T] {
+    func parallelCompactMap<T>(transform: (Element) -> T?) -> [T] {
         return parallelMap(transform: transform).compactMap { $0 }
     }
 

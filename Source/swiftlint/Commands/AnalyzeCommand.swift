@@ -1,5 +1,4 @@
 import Commandant
-import Result
 import SwiftLintFramework
 
 struct AnalyzeCommand: CommandProtocol {
@@ -16,8 +15,10 @@ struct AnalyzeCommand: CommandProtocol {
     }
 
     private func autocorrect(_ options: LintOrAnalyzeOptions) -> Result<(), CommandantError<()>> {
-        return Configuration(options: options).visitLintableFiles(options: options, cache: nil) { linter in
-            let corrections = linter.correct()
+        let storage = RuleStorage()
+        let configuration = Configuration(options: options)
+        return configuration.visitLintableFiles(options: options, cache: nil, storage: storage) { linter in
+            let corrections = linter.correct(using: storage)
             if !corrections.isEmpty && !options.quiet {
                 let correctionLogs = corrections.map({ $0.consoleDescription })
                 queuedPrint(correctionLogs.joined(separator: "\n"))
@@ -47,19 +48,20 @@ struct AnalyzeOptions: OptionsProtocol {
     let enableAllRules: Bool
     let autocorrect: Bool
     let compilerLogPath: String
+    let compileCommands: String
 
     // swiftlint:disable line_length
-    static func create(_ path: String) -> (_ configurationFile: String) -> (_ strict: Bool) -> (_ lenient: Bool) -> (_ forceExclude: Bool) -> (_ useScriptInputFiles: Bool) -> (_ benchmark: Bool) -> (_ reporter: String) -> (_ quiet: Bool) -> (_ enableAllRules: Bool) -> (_ autocorrect: Bool) -> (_ compilerLogPath: String) -> (_ paths: [String]) -> AnalyzeOptions {
-        return { configurationFile in { strict in { lenient in { forceExclude in { useScriptInputFiles in { benchmark in { reporter in { quiet in { enableAllRules in { autocorrect in { compilerLogPath in { paths in
+    static func create(_ path: String) -> (_ configurationFile: String) -> (_ strict: Bool) -> (_ lenient: Bool) -> (_ forceExclude: Bool) -> (_ useScriptInputFiles: Bool) -> (_ benchmark: Bool) -> (_ reporter: String) -> (_ quiet: Bool) -> (_ enableAllRules: Bool) -> (_ autocorrect: Bool) -> (_ compilerLogPath: String) -> (_ compileCommands: String) -> (_ paths: [String]) -> AnalyzeOptions {
+        return { configurationFile in { strict in { lenient in { forceExclude in { useScriptInputFiles in { benchmark in { reporter in { quiet in { enableAllRules in { autocorrect in { compilerLogPath in { compileCommands in { paths in
             let allPaths: [String]
             if !path.isEmpty {
                 allPaths = [path]
             } else {
                 allPaths = paths
             }
-            return self.init(paths: allPaths, configurationFile: configurationFile, strict: strict, lenient: lenient, forceExclude: forceExclude, useScriptInputFiles: useScriptInputFiles, benchmark: benchmark, reporter: reporter, quiet: quiet, enableAllRules: enableAllRules, autocorrect: autocorrect, compilerLogPath: compilerLogPath)
+            return self.init(paths: allPaths, configurationFile: configurationFile, strict: strict, lenient: lenient, forceExclude: forceExclude, useScriptInputFiles: useScriptInputFiles, benchmark: benchmark, reporter: reporter, quiet: quiet, enableAllRules: enableAllRules, autocorrect: autocorrect, compilerLogPath: compilerLogPath, compileCommands: compileCommands)
             // swiftlint:enable line_length
-        }}}}}}}}}}}}
+        }}}}}}}}}}}}}
     }
 
     static func evaluate(_ mode: CommandMode) -> Result<AnalyzeOptions, CommandantError<CommandantError<()>>> {
@@ -85,6 +87,8 @@ struct AnalyzeOptions: OptionsProtocol {
                                usage: "correct violations whenever possible")
             <*> mode <| Option(key: "compiler-log-path", defaultValue: "",
                                usage: "the path of the full xcodebuild log to use when linting AnalyzerRules")
+            <*> mode <| Option(key: "compile-commands", defaultValue: "",
+                               usage: "the path of a compilation database to use when linting AnalyzerRules")
             // This should go last to avoid eating other args
             <*> mode <| pathsArgument(action: "analyze")
     }

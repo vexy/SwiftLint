@@ -44,7 +44,7 @@ $ mint install realm/SwiftLint
 
 ### 소스를 직접 컴파일하는 경우:
 
-본 프로젝트를 클론해서 빌드할 수도 있습니다. `git submodule update --init --recursive; make install` 명령을 사용합니다. (Xcode 8.0 이후 버전)
+본 프로젝트를 클론해서 빌드할 수도 있습니다. `git submodule update --init --recursive; make install` 명령을 사용합니다. (Xcode 10.2 이후 버전)
 
 ## 사용 방법
 
@@ -52,7 +52,7 @@ $ mint install realm/SwiftLint
 
 프로젝트에 SwiftLint를 통합하기 위한 권장 사용 방식의 전반적인 개요를 알고 싶다면, 아래 프레젠테이션 영상을 보거나 스크립트를 읽어보면 좋습니다.
 
-[![Presentation](assets/presentation.jpg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
+[![Presentation](assets/presentation.svg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
 
 ### Xcode
 

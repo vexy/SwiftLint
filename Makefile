@@ -10,7 +10,10 @@ XCODEFLAGS=-workspace 'SwiftLint.xcworkspace' \
 SWIFT_BUILD_FLAGS=--configuration release
 UNAME=$(shell uname)
 ifeq ($(UNAME), Darwin)
+USE_SWIFT_STATIC_STDLIB:=$(shell test -d $$(dirname $$(xcrun --find swift))/../lib/swift_static/macosx && echo yes)
+ifeq ($(USE_SWIFT_STATIC_STDLIB), yes)
 SWIFT_BUILD_FLAGS+= -Xswiftc -static-stdlib
+endif
 endif
 
 SWIFTLINT_EXECUTABLE=$(shell swift build $(SWIFT_BUILD_FLAGS) --show-bin-path)/swiftlint
@@ -31,7 +34,7 @@ SWIFTLINTFRAMEWORK_PLIST=Source/SwiftLintFramework/Supporting Files/Info.plist
 
 VERSION_STRING=$(shell /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(SWIFTLINT_PLIST)")
 
-.PHONY: all bootstrap clean build install package test uninstall
+.PHONY: all bootstrap clean build install package test uninstall docs
 
 all: build
 
@@ -60,7 +63,7 @@ test_tsan:
 	DYLD_INSERT_LIBRARIES=$(TSAN_LIB) $(TSAN_XCTEST) $(TSAN_TEST_BUNDLE)
 
 write_xcodebuild_log: bootstrap
-	xcodebuild -workspace SwiftLint.xcworkspace -scheme swiftlint > xcodebuild.log
+	xcodebuild -workspace SwiftLint.xcworkspace -scheme swiftlint clean build-for-testing > xcodebuild.log
 
 analyze: write_xcodebuild_log
 	swift run -c release swiftlint analyze --strict --compiler-log-path xcodebuild.log
@@ -119,19 +122,24 @@ archive:
 release: package archive portable_zip
 
 docker_test:
-	docker run -v `pwd`:`pwd` -w `pwd` --name swiftlint --rm norionomura/swift:42 swift test --parallel
+	docker run -v `pwd`:`pwd` -w `pwd` --name swiftlint --rm norionomura/swift:51 swift test --parallel
 
 docker_htop:
 	docker run -it --rm --pid=container:swiftlint terencewestphal/htop || reset
 
-# http://irace.me/swift-profiling/
+# https://irace.me/swift-profiling
 display_compilation_time:
 	$(BUILD_TOOL) $(XCODEFLAGS) OTHER_SWIFT_FLAGS="-Xfrontend -debug-time-function-bodies" clean build-for-testing | grep -E ^[1-9]{1}[0-9]*.[0-9]+ms | sort -n
 
 publish:
 	brew update && brew bump-formula-pr --tag=$(shell git describe --tags) --revision=$(shell git rev-parse HEAD) swiftlint
-	pod trunk push SwiftLintFramework.podspec --swift-version=4.2
-	pod trunk push SwiftLint.podspec --swift-version=4.2
+	pod trunk push SwiftLintFramework.podspec
+	pod trunk push SwiftLint.podspec
+
+docs:
+	swift run swiftlint generate-docs
+	bundle install
+	bundle exec jazzy
 
 get_version:
 	@echo $(VERSION_STRING)

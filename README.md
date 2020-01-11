@@ -47,6 +47,7 @@ library distribution to the `Pods/` directory, so checking in this directory to 
 git is discouraged.
 
 ### Using [Mint](https://github.com/yonaskolb/mint):
+
 ```
 $ mint install realm/SwiftLint
 ```
@@ -60,7 +61,19 @@ running it.
 ### Compiling from source:
 
 You can also build from source by cloning this project and running
-`git submodule update --init --recursive; make install` (Xcode 10.0 or later).
+`git submodule update --init --recursive; make install` (Xcode 10.2 or later).
+
+### Known Installation Issues On MacOS Before 10.14.4
+
+Starting with [SwiftLint 0.32.0](https://github.com/realm/SwiftLint/releases/tag/0.32.0), if you get
+an error similar to `dyld: Symbol not found: _$s11SubSequenceSlTl` when running SwiftLint,
+you'll need to install the [Swift 5 Runtime Support for Command Line Tools](https://support.apple.com/kb/DL1998).
+
+Alternatively, you can:
+
+* Update to macOS 10.14.4 or later
+* Install Xcode 10.2 or later at `/Applications/Xcode.app`
+* Rebuild SwiftLint from source using Xcode 10.2 or later
 
 ## Usage
 
@@ -69,7 +82,7 @@ You can also build from source by cloning this project and running
 To get a high-level overview of recommended ways to integrate SwiftLint into your project,
 we encourage you to watch this presentation or read the transcript:
 
-[![Presentation](assets/presentation.jpg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
+[![Presentation](assets/presentation.svg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
 
 ### Xcode
 
@@ -213,7 +226,8 @@ Here's a reference of which SwiftLint version to use for a given Swift version.
 | Swift 2.x       | SwiftLint 0.18.1                 |
 | Swift 3.x       | SwiftLint 0.25.1                 |
 | Swift 4.0-4.1.x | SwiftLint 0.28.2                 |
-| Swift 4.2+      | Latest                           |
+| Swift 4.2.x     | SwiftLint 0.35.0                 |
+| Swift 5.x       | Latest                           |
 
 ## Rules
 
@@ -222,7 +236,7 @@ continues to contribute more over time.
 [Pull requests](CONTRIBUTING.md) are encouraged.
 
 You can find an updated list of rules and more information about them
-in [Rules.md](Rules.md).
+[here](https://realm.github.io/SwiftLint/rule-directory.html).
 
 You can also check [Source/SwiftLintFramework/Rules](Source/SwiftLintFramework/Rules)
 directory to see their implementation.
@@ -354,6 +368,7 @@ type_name:
     warning: 40
     error: 50
   excluded: iPhone # excluded via string
+  allowed_symbols: ["_"] # these are allowed in type names
 identifier_name:
   min_length: # only min_length
     error: 4 # only error
@@ -379,6 +394,7 @@ custom_rules:
     excluded: ".*Test\\.swift" # regex that defines paths to exclude during linting. optional
     name: "Pirates Beat Ninjas" # rule name. optional.
     regex: "([n,N]inja)" # matching pattern
+    capture_group: 0 # number of regex capture group to highlight the rule violation at. optional.
     match_kinds: # SyntaxKinds to match. optional.
       - comment
       - identifier
@@ -429,8 +445,7 @@ the linting process.
 * Each file will be linted using the configuration file that is in its
   directory or at the deepest level of its parent directories. Otherwise the
   root configuration will be used.
-* `excluded` and `included` are ignored for nested
-  configurations.
+* `included` is ignored for nested configurations.
 
 ### Auto-correct
 
@@ -475,3 +490,8 @@ We :heart: open source software!
 See [our other open source projects](https://github.com/realm),
 read [our blog](https://realm.io/news), or say hi on twitter
 ([@realm](https://twitter.com/realm)).
+
+<img src="assets/macstadium.png" width="184" />
+
+Our thanks to MacStadium for providing a Mac Mini to run our performance
+tests.

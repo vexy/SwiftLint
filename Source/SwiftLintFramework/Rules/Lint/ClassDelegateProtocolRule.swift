@@ -30,8 +30,8 @@ public struct ClassDelegateProtocolRule: ASTRule, ConfigurationProviderRule, Aut
 
     private let referenceTypeProtocols: Set = ["AnyObject", "NSObjectProtocol", "class"]
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard kind == .protocol else {
             return []
         }
@@ -49,12 +49,12 @@ public struct ClassDelegateProtocolRule: ASTRule, ConfigurationProviderRule, Aut
         }
 
         // Check if inherits from another Delegate protocol
-        guard dictionary.inheritedTypes.filter(isDelegateProtocol).isEmpty else {
+        guard !dictionary.inheritedTypes.contains(where: isDelegateProtocol) else {
             return []
         }
 
         // Check if inherits from a known reference type protocol
-        guard dictionary.inheritedTypes.filter(isReferenceTypeProtocol).isEmpty else {
+        guard !dictionary.inheritedTypes.contains(where: isReferenceTypeProtocol) else {
             return []
         }
 
@@ -63,7 +63,7 @@ public struct ClassDelegateProtocolRule: ASTRule, ConfigurationProviderRule, Aut
             let nameOffset = dictionary.nameOffset,
             let nameLength = dictionary.nameLength,
             let bodyOffset = dictionary.bodyOffset,
-            case let contents = file.contents.bridge(),
+            case let contents = file.stringView,
             case let start = nameOffset + nameLength,
             let range = contents.byteRangeToNSRange(start: start, length: bodyOffset - start),
             !isClassProtocol(file: file, range: range) else {
@@ -77,7 +77,7 @@ public struct ClassDelegateProtocolRule: ASTRule, ConfigurationProviderRule, Aut
         ]
     }
 
-    private func isClassProtocol(file: File, range: NSRange) -> Bool {
+    private func isClassProtocol(file: SwiftLintFile, range: NSRange) -> Bool {
         return !file.match(pattern: "\\bclass\\b", with: [.keyword], range: range).isEmpty
     }
 

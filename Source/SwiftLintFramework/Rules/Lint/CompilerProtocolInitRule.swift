@@ -29,8 +29,8 @@ public struct CompilerProtocolInitRule: ASTRule, ConfigurationProviderRule {
                 "shouldn't be called directly."
     }
 
-    public func validate(file: File, kind: SwiftExpressionKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftExpressionKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         return violationRanges(in: file, kind: kind, dictionary: dictionary).map {
             let (violation, range) = $0
             return StyleViolation(
@@ -42,8 +42,8 @@ public struct CompilerProtocolInitRule: ASTRule, ConfigurationProviderRule {
         }
     }
 
-    private func violationRanges(in file: File, kind: SwiftExpressionKind,
-                                 dictionary: [String: SourceKitRepresentable]) -> [(ExpressibleByCompiler, NSRange)] {
+    private func violationRanges(in file: SwiftLintFile, kind: SwiftExpressionKind,
+                                 dictionary: SourceKittenDictionary) -> [(ExpressibleByCompiler, NSRange)] {
         guard kind == .call, let name = dictionary.name else {
             return []
         }
@@ -54,7 +54,7 @@ public struct CompilerProtocolInitRule: ASTRule, ConfigurationProviderRule {
                 compilerProtocol.match(arguments: arguments),
                 let offset = dictionary.offset,
                 let length = dictionary.length,
-                let range = file.contents.bridge().byteRangeToNSRange(start: offset, length: length) else {
+                let range = file.stringView.byteRangeToNSRange(start: offset, length: length) else {
                     continue
             }
 

@@ -16,9 +16,9 @@ public struct MultilineParametersRule: ASTRule, OptInRule, ConfigurationProvider
         triggeringExamples: MultilineParametersRuleExamples.triggeringExamples
     )
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard
             SwiftDeclarationKind.functionKinds.contains(kind),
             let offset = dictionary.nameOffset,
@@ -31,7 +31,7 @@ public struct MultilineParametersRule: ASTRule, OptInRule, ConfigurationProvider
             guard
                 let offset = subStructure.offset,
                 let length = subStructure.length,
-                let kind = subStructure.kind, SwiftDeclarationKind(rawValue: kind) == .varParameter
+                subStructure.declarationKind == .varParameter
                 else {
                     return nil
             }
@@ -44,7 +44,7 @@ public struct MultilineParametersRule: ASTRule, OptInRule, ConfigurationProvider
 
         for range in parameterRanges {
             guard
-                let (line, _) = file.contents.bridge().lineAndCharacter(forByteOffset: range.offset),
+                let (line, _) = file.stringView.lineAndCharacter(forByteOffset: range.offset),
                 offset..<(offset + length) ~= range.offset,
                 isRange(range, withinRanges: parameterRanges)
                 else {
@@ -70,6 +70,6 @@ public struct MultilineParametersRule: ASTRule, OptInRule, ConfigurationProvider
     // MARK: - Private
 
     private func isRange(_ range: ParameterRange, withinRanges ranges: [ParameterRange]) -> Bool {
-        return ranges.filter { $0 != range && ($0.offset..<($0.offset + $0.length)).contains(range.offset) }.isEmpty
+        return !ranges.contains { $0 != range && ($0.offset..<($0.offset + $0.length)).contains(range.offset) }
     }
 }

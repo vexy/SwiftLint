@@ -1,5 +1,8 @@
+/// A type describing the SwiftLint version.
 public struct Version {
+    /// The string value for this version.
     public let value: String
 
-    public static let current = Version(value: "0.30.1")
+    /// The current SwiftLint version.
+    public static let current = Version(value: "0.38.2")
 }

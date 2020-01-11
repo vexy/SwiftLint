@@ -34,13 +34,18 @@ pod 'SwiftLint'
 
 请注意这会将 SwiftLint 二进制文件、所依赖的二进制文件和 Swift 二进制库安装到 `Pods/` 目录下，所以不推荐将此目录添加到版本控制系统（如 git）中进行跟踪。
 
+### 使用 [Mint](https://github.com/yonaskolb/mint)：
+```
+$ mint install realm/SwiftLint
+```
+
 ### 使用安装包：
 
 你也可以通过从[最新的 GitHub 发布地址](https://github.com/realm/SwiftLint/releases/latest)下载 `SwiftLint.pkg` 然后执行的方式安装 SwiftLint。
 
 ### 编译源代码：
 
-你也可以通过 Clone SwiftLint 的 Git 仓库到本地然后执行 `git submodule update --init --recursive; make install` (Xcode 8.3+) 编译源代码的方式来安装。
+你也可以通过 Clone SwiftLint 的 Git 仓库到本地然后执行 `git submodule update --init --recursive; make install` (Xcode 10.2+) 编译源代码的方式来安装。
 
 ## 用法
 
@@ -48,7 +53,7 @@ pod 'SwiftLint'
 
 我们鼓励您观看本次报告，来获得将 SwiftLint 整合到你的项目中的推荐方式的一个高层次概括：
 
-[![Presentation](assets/presentation.jpg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
+[![Presentation](assets/presentation.svg)](https://academy.realm.io/posts/slug-jp-simard-swiftlint/)
 
 ### Xcode
 
@@ -166,13 +171,14 @@ $ TOOLCHAINS=com.apple.dt.toolchain.Swift_2_3 swiftlint autocorrect
 | Swift 2.x       | SwiftLint 0.18.1            |
 | Swift 3.x       | SwiftLint 0.25.1            |
 | Swift 4.0-4.1.x | SwiftLint 0.28.2            |
-| Swift 4.2+      | 最新的                      |
+| Swift 4.2.x     | SwiftLint 0.35.0            |
+| Swift 5.x       | 最新的                      |
 
 ## 规则
 
 SwiftLint 已经包含了超过 75 条规则，并且我们希望 Swift 社区（就是你！）会在以后有更多的贡献，我们鼓励提交 [Pull Requests](CONTRIBUTING.md)。
 
-你可以在 [Rules.md](Rules.md) 找到规则的更新列表和更多信息。
+你可以在 [Rule Directory](https://realm.github.io/SwiftLint/rule-directory.html) 找到规则的更新列表和更多信息。
 
 你也可以检视 [Source/SwiftLintFramework/Rules](Source/SwiftLintFramework/Rules) 目录来查看它们的实现。
 

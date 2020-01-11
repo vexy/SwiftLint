@@ -34,20 +34,20 @@ public struct TodoRule: ConfigurationProviderRule {
         ]
     )
 
-    private func customMessage(file: File, range: NSRange) -> String {
+    private func customMessage(file: SwiftLintFile, range: NSRange) -> String {
         var reason = type(of: self).description.description
         let offset = NSMaxRange(range)
 
-        guard let (lineNumber, _) = file.contents.bridge().lineAndCharacter(forCharacterOffset: offset) else {
+        guard let (lineNumber, _) = file.stringView.lineAndCharacter(forCharacterOffset: offset) else {
             return reason
         }
 
         let line = file.lines[lineNumber - 1]
         // customizing the reason message to be specific to fixme or todo
-        let violationSubstring = file.contents.bridge().substring(with: range)
+        let violationSubstring = file.stringView.substring(with: range)
 
         let range = NSRange(location: offset, length: NSMaxRange(line.range) - offset)
-        var message = file.contents.bridge().substring(with: range)
+        var message = file.stringView.substring(with: range)
         let kind = violationSubstring.hasPrefix("FIXME") ? "FIXMEs" : "TODOs"
 
         // trim whitespace
@@ -71,9 +71,9 @@ public struct TodoRule: ConfigurationProviderRule {
         return reason
     }
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         return file.match(pattern: "\\b(?:TODO|FIXME)(?::|\\b)").compactMap { range, syntaxKinds in
-            if !syntaxKinds.filter({ !$0.isCommentLike }).isEmpty {
+            if syntaxKinds.contains(where: { !$0.isCommentLike }) {
                 return nil
             }
             let reason = customMessage(file: file, range: range)

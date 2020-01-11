@@ -1,6 +1,6 @@
 import SourceKittenFramework
 
-public struct RedundantSetAccessControlRule: ASTRule, ConfigurationProviderRule, AutomaticTestableRule {
+public struct RedundantSetAccessControlRule: ConfigurationProviderRule, AutomaticTestableRule {
     public var configuration = SeverityConfiguration(.warning)
 
     public init() {}
@@ -46,10 +46,39 @@ public struct RedundantSetAccessControlRule: ASTRule, ConfigurationProviderRule,
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
+        return file.structureDictionary.traverseWithParentDepthFirst { parent, subDict in
+            guard let kind = subDict.declarationKind else { return nil }
+            return validate(file: file, kind: kind, dictionary: subDict, parentDictionary: parent)
+        }
+    }
+
+    private func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                          dictionary: SourceKittenDictionary,
+                          parentDictionary: SourceKittenDictionary?) -> [StyleViolation] {
+        let aclAttributes: Set<SwiftDeclarationAttributeKind> = [.private, .fileprivate, .internal, .public, .open]
+        let explicitACL = dictionary.swiftAttributes.compactMap { dict -> SwiftDeclarationAttributeKind? in
+            guard let attribute = dict.attribute.flatMap(SwiftDeclarationAttributeKind.init),
+                aclAttributes.contains(attribute) else {
+                    return nil
+            }
+
+            return attribute
+        }.first
+
+        let acl = dictionary.accessibility
+        let resolvedAccessibility: AccessControlLevel? = explicitACL?.acl ?? {
+            let parentACL = parentDictionary?.accessibility
+
+            if acl == .internal, let parentACL = parentACL, parentACL == .fileprivate {
+                return .fileprivate
+            } else {
+                return acl
+            }
+        }()
+
         guard SwiftDeclarationKind.variableKinds.contains(kind),
-            dictionary.setterAccessibility == dictionary.accessibility else {
+            resolvedAccessibility?.rawValue == dictionary.setterAccessibility else {
                 return []
         }
 
@@ -61,18 +90,9 @@ public struct RedundantSetAccessControlRule: ASTRule, ConfigurationProviderRule,
             return []
         }
 
-        let aclAttributes: Set<SwiftDeclarationAttributeKind> = [.private, .fileprivate, .internal, .public, .open]
-        let explicitACL = dictionary.swiftAttributes.first { dict in
-            guard let attribute = dict.attribute.flatMap(SwiftDeclarationAttributeKind.init) else {
-                return false
-            }
-
-            return aclAttributes.contains(attribute)
-        }
-
         // if it's an inferred `private`, it means the variable is actually inside a fileprivate structure
-        if dictionary.accessibility.flatMap(AccessControlLevel.init(identifier:)) == .private,
-            explicitACL?.offset == nil,
+        if dictionary.accessibility == .private,
+            explicitACL == nil,
             dictionary.setterAccessibility.flatMap(AccessControlLevel.init(identifier:)) == .private {
                 return []
         }
@@ -82,5 +102,24 @@ public struct RedundantSetAccessControlRule: ASTRule, ConfigurationProviderRule,
                            severity: configuration.severity,
                            location: Location(file: file, byteOffset: offset))
         ]
+    }
+}
+
+private extension SwiftDeclarationAttributeKind {
+    var acl: AccessControlLevel? {
+        switch self {
+        case .private:
+            return .private
+        case .fileprivate:
+            return .fileprivate
+        case .internal:
+            return .internal
+        case .public:
+            return .public
+        case .open:
+            return .open
+        default:
+            return nil
+        }
     }
 }

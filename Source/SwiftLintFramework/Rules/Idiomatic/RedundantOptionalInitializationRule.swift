@@ -90,8 +90,8 @@ public struct RedundantOptionalInitializationRule: SubstitutionCorrectableASTRul
 
     private let pattern = "\\s*=\\s*nil\\b"
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         return violationRanges(in: file, kind: kind, dictionary: dictionary).map {
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.severity,
@@ -99,12 +99,12 @@ public struct RedundantOptionalInitializationRule: SubstitutionCorrectableASTRul
         }
     }
 
-    public func substitution(for violationRange: NSRange, in file: File) -> (NSRange, String) {
+    public func substitution(for violationRange: NSRange, in file: SwiftLintFile) -> (NSRange, String)? {
         return (violationRange, "")
     }
 
-    public func violationRanges(in file: File, kind: SwiftDeclarationKind,
-                                dictionary: [String: SourceKitRepresentable]) -> [NSRange] {
+    public func violationRanges(in file: SwiftLintFile, kind: SwiftDeclarationKind,
+                                dictionary: SourceKittenDictionary) -> [NSRange] {
         guard SwiftDeclarationKind.variableKinds.contains(kind),
             let type = dictionary.typeName,
             typeIsOptional(type),
@@ -119,13 +119,13 @@ public struct RedundantOptionalInitializationRule: SubstitutionCorrectableASTRul
         return [match]
     }
 
-    private func range(for dictionary: [String: SourceKitRepresentable], file: File) -> NSRange? {
+    private func range(for dictionary: SourceKittenDictionary, file: SwiftLintFile) -> NSRange? {
         guard let offset = dictionary.offset,
             let length = dictionary.length else {
                 return nil
         }
 
-        let contents = file.contents.bridge()
+        let contents = file.stringView
         if let bodyOffset = dictionary.bodyOffset {
             return contents.byteRangeToNSRange(start: offset, length: bodyOffset - offset)
         } else {
@@ -138,8 +138,8 @@ public struct RedundantOptionalInitializationRule: SubstitutionCorrectableASTRul
     }
 }
 
-extension Dictionary where Key == String, Value == SourceKitRepresentable {
-    fileprivate func isMutableVariable(file: File) -> Bool {
+extension SourceKittenDictionary {
+    fileprivate func isMutableVariable(file: SwiftLintFile) -> Bool {
         return setterAccessibility != nil || (isLocal && isVariable(file: file))
     }
 
@@ -147,9 +147,9 @@ extension Dictionary where Key == String, Value == SourceKitRepresentable {
         return accessibility == nil && setterAccessibility == nil
     }
 
-    private func isVariable(file: File) -> Bool {
+    private func isVariable(file: SwiftLintFile) -> Bool {
         guard let start = offset, let length = length,
-            case let contents = file.contents.bridge(),
+            case let contents = file.stringView,
             let range = contents.byteRangeToNSRange(start: start, length: length),
             !file.match(pattern: "\\Avar\\b", with: [.keyword], range: range).isEmpty else {
                 return false

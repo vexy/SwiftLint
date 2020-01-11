@@ -26,6 +26,10 @@ public struct FunctionDefaultParameterAtEndRule: ASTRule, ConfigurationProviderR
             func foo(a: Int, b: CGFloat = 0) {
               let block = { (error: Error?) in }
             }
+            """,
+            """
+            func foo(a: String, b: String? = nil,
+                     c: String? = nil, d: @escaping AlertActionHandler = { _ in }) {}
             """
         ],
         triggeringExamples: [
@@ -33,8 +37,8 @@ public struct FunctionDefaultParameterAtEndRule: ASTRule, ConfigurationProviderR
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard SwiftDeclarationKind.functionKinds.contains(kind),
             let offset = dictionary.offset,
             let bodyOffset = dictionary.bodyOffset,
@@ -43,13 +47,22 @@ public struct FunctionDefaultParameterAtEndRule: ASTRule, ConfigurationProviderR
         }
 
         let isNotClosure = { !self.isClosureParameter(dictionary: $0) }
-        let params = dictionary.enclosedVarParameters.filter(isNotClosure).filter { param in
-            guard let paramOffset = param.offset else {
-                return false
-            }
+        let params = dictionary.substructure
+            .flatMap { subDict -> [SourceKittenDictionary] in
+                guard subDict.declarationKind == .varParameter else {
+                    return []
+                }
 
-            return paramOffset < bodyOffset
-        }
+                return [subDict]
+            }
+            .filter(isNotClosure)
+            .filter { param in
+                guard let paramOffset = param.offset else {
+                    return false
+                }
+
+                return paramOffset < bodyOffset
+            }
 
         guard !params.isEmpty else {
             return []
@@ -75,7 +88,7 @@ public struct FunctionDefaultParameterAtEndRule: ASTRule, ConfigurationProviderR
         ]
     }
 
-    private func isClosureParameter(dictionary: [String: SourceKitRepresentable]) -> Bool {
+    private func isClosureParameter(dictionary: SourceKittenDictionary) -> Bool {
         guard let typeName = dictionary.typeName else {
             return false
         }
@@ -83,8 +96,8 @@ public struct FunctionDefaultParameterAtEndRule: ASTRule, ConfigurationProviderR
         return typeName.contains("->") || typeName.contains("@escaping")
     }
 
-    private func isDefaultParameter(file: File, dictionary: [String: SourceKitRepresentable]) -> Bool {
-        let contents = file.contents.bridge()
+    private func isDefaultParameter(file: SwiftLintFile, dictionary: SourceKittenDictionary) -> Bool {
+        let contents = file.stringView
         guard let offset = dictionary.offset, let length = dictionary.length,
             let range = contents.byteRangeToNSRange(start: offset, length: length) else {
                 return false

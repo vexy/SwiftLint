@@ -3,10 +3,10 @@ import SourceKittenFramework
 
 private let typeAndExtensionKinds = SwiftDeclarationKind.typeKinds + [.extension, .protocol]
 
-private extension Dictionary where Key: ExpressibleByStringLiteral {
+private extension SourceKittenDictionary {
     func recursiveDeclaredTypeNames() -> [String] {
         let subNames = substructure.flatMap { $0.recursiveDeclaredTypeNames() }
-        if let kind = kind.flatMap(SwiftDeclarationKind.init),
+        if let kind = declarationKind,
             typeAndExtensionKinds.contains(kind), let name = name {
             return [name] + subNames
         }
@@ -19,7 +19,8 @@ public struct FileNameRule: ConfigurationProviderRule, OptInRule {
         severity: .warning,
         excluded: ["main.swift", "LinuxMain.swift"],
         prefixPattern: "",
-        suffixPattern: "\\+.*"
+        suffixPattern: "\\+.*",
+        nestedTypeSeparator: "."
     )
 
     public init() {}
@@ -31,7 +32,7 @@ public struct FileNameRule: ConfigurationProviderRule, OptInRule {
         kind: .idiomatic
     )
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         guard let filePath = file.path,
             case let fileName = filePath.bridge().lastPathComponent,
             !configuration.excluded.contains(fileName) else {
@@ -43,17 +44,24 @@ public struct FileNameRule: ConfigurationProviderRule, OptInRule {
 
         var typeInFileName = fileName.bridge().deletingPathExtension
 
+        // Process prefix
         if let match = prefixRegex.firstMatch(in: typeInFileName, options: [], range: typeInFileName.fullNSRange),
             let range = typeInFileName.nsrangeToIndexRange(match.range) {
             typeInFileName.removeSubrange(range)
         }
 
+        // Process suffix
         if let match = suffixRegex.firstMatch(in: typeInFileName, options: [], range: typeInFileName.fullNSRange),
             let range = typeInFileName.nsrangeToIndexRange(match.range) {
             typeInFileName.removeSubrange(range)
         }
 
-        let allDeclaredTypeNames = file.structure.dictionary.recursiveDeclaredTypeNames()
+        // Process nested type separator
+        let dictionary = file.structureDictionary
+        let allDeclaredTypeNames = dictionary.recursiveDeclaredTypeNames().map {
+            $0.replacingOccurrences(of: ".", with: configuration.nestedTypeSeparator)
+        }
+
         guard !allDeclaredTypeNames.isEmpty, !allDeclaredTypeNames.contains(typeInFileName) else {
             return []
         }

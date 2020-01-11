@@ -31,16 +31,16 @@ public struct TypeBodyLengthRule: ASTRule, ConfigurationProviderRule, AutomaticT
         })
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard SwiftDeclarationKind.typeKinds.contains(kind) else {
             return []
         }
         if let offset = dictionary.offset,
             let bodyOffset = dictionary.bodyOffset,
             let bodyLength = dictionary.bodyLength {
-            let startLine = file.contents.bridge().lineAndCharacter(forByteOffset: bodyOffset)
-            let endLine = file.contents.bridge()
+            let startLine = file.stringView.lineAndCharacter(forByteOffset: bodyOffset)
+            let endLine = file.stringView
                 .lineAndCharacter(forByteOffset: bodyOffset + bodyLength)
 
             if let startLine = startLine?.line, let endLine = endLine?.line {

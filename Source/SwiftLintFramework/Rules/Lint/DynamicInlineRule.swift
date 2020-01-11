@@ -25,8 +25,8 @@ public struct DynamicInlineRule: ASTRule, ConfigurationProviderRule, AutomaticTe
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         // Look for functions with both "inline" and "dynamic". For each of these, we can get offset
         // of the "func" keyword. We can assume that the nearest "@inline" before this offset is
         // the attribute we are interested in.
@@ -35,7 +35,7 @@ public struct DynamicInlineRule: ASTRule, ConfigurationProviderRule, AutomaticTe
             attributes.contains(.dynamic),
             attributes.contains(.inline),
             let funcByteOffset = dictionary.offset,
-            let funcOffset = file.contents.bridge()
+            let funcOffset = file.stringView
                 .byteRangeToNSRange(start: funcByteOffset, length: 0)?.location,
             case let inlinePattern = regex("@inline"),
             case let range = NSRange(location: 0, length: funcOffset),

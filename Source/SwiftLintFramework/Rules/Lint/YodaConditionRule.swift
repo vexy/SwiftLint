@@ -58,9 +58,9 @@ public struct YodaConditionRule: ASTRule, OptInRule, ConfigurationProviderRule, 
             "↓if nil == foo"
         ])
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: StatementKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard observedStatements.contains(kind),
               let offset = dictionary.offset,
               let length = dictionary.length
@@ -69,7 +69,7 @@ public struct YodaConditionRule: ASTRule, OptInRule, ConfigurationProviderRule, 
         }
 
         let matches = file.lines.filter({ $0.byteRange.contains(offset) }).reduce(into: []) { matches, line in
-            let range = NSRange(location: 0, length: line.content.bridge().length)
+            let range = line.content.fullNSRange
             let lineMatches = YodaConditionRule.regularExpression.matches(in: line.content, options: [], range: range)
             matches.append(contentsOf: lineMatches)
         }
@@ -82,8 +82,8 @@ public struct YodaConditionRule: ASTRule, OptInRule, ConfigurationProviderRule, 
         }
     }
 
-    private func startOffset(of offset: Int, with length: Int, in file: File) -> Int {
-        let range = file.contents.bridge().byteRangeToNSRange(start: offset, length: length)
+    private func startOffset(of offset: Int, with length: Int, in file: SwiftLintFile) -> Int {
+        let range = file.stringView.byteRangeToNSRange(start: offset, length: length)
         return range?.location ?? offset
     }
 }

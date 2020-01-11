@@ -18,7 +18,9 @@ public struct ExplicitTopLevelACLRule: OptInRule, ConfigurationProviderRule, Aut
             "internal enum A {\n enum B {}\n}",
             "internal final class Foo {}",
             "internal\nclass Foo {}",
-            "internal func a() {}\n"
+            "internal func a() {}\n",
+            "extension A: Equatable {}",
+            "extension A {}"
         ],
         triggeringExamples: [
             "enum A {}\n",
@@ -29,10 +31,20 @@ public struct ExplicitTopLevelACLRule: OptInRule, ConfigurationProviderRule, Aut
         ]
     )
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
+        let extensionKinds: Set<SwiftDeclarationKind> = [.extension, .extensionClass, .extensionEnum,
+                                                         .extensionProtocol, .extensionStruct]
+
         // find all top-level types marked as internal (either explictly or implictly)
-        let internalTypesOffsets = file.structure.dictionary.substructure.compactMap { element -> Int? in
-            if element.accessibility.flatMap(AccessControlLevel.init(identifier:)) == .internal {
+        let dictionary = file.structureDictionary
+        let internalTypesOffsets = dictionary.substructure.compactMap { element -> Int? in
+            // ignore extensions
+            guard let kind = element.declarationKind,
+                !extensionKinds.contains(kind) else {
+                    return nil
+            }
+
+            if element.accessibility == .internal {
                 return element.offset
             }
 
@@ -44,7 +56,7 @@ public struct ExplicitTopLevelACLRule: OptInRule, ConfigurationProviderRule, Aut
         }
 
         // find all "internal" tokens
-        let contents = file.contents.bridge()
+        let contents = file.stringView
         let allInternalRanges = file.match(pattern: "internal", with: [.attributeBuiltin]).compactMap {
             contents.NSRangeToByteRange(start: $0.location, length: $0.length)
         }

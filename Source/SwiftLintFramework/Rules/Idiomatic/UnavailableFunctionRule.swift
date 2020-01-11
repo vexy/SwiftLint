@@ -53,20 +53,20 @@ public struct UnavailableFunctionRule: ASTRule, ConfigurationProviderRule, OptIn
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard SwiftDeclarationKind.functionKinds.contains(kind) else {
             return []
         }
 
         let containsFatalError = dictionary.substructure.contains { dict -> Bool in
-            return dict.kind.flatMap(SwiftExpressionKind.init(rawValue:)) == .call && dict.name == "fatalError"
+            return dict.expressionKind == .call && dict.name == "fatalError"
         }
 
         guard let offset = dictionary.offset, containsFatalError,
             !isFunctionUnavailable(file: file, dictionary: dictionary),
             let bodyOffset = dictionary.bodyOffset, let bodyLength = dictionary.bodyLength,
-            let range = file.contents.bridge().byteRangeToNSRange(start: bodyOffset, length: bodyLength),
+            let range = file.stringView.byteRangeToNSRange(start: bodyOffset, length: bodyLength),
             file.match(pattern: "\\breturn\\b", with: [.keyword], range: range).isEmpty else {
                 return []
         }
@@ -78,11 +78,11 @@ public struct UnavailableFunctionRule: ASTRule, ConfigurationProviderRule, OptIn
         ]
     }
 
-    private func isFunctionUnavailable(file: File, dictionary: [String: SourceKitRepresentable]) -> Bool {
+    private func isFunctionUnavailable(file: SwiftLintFile, dictionary: SourceKittenDictionary) -> Bool {
         return dictionary.swiftAttributes.contains { dict -> Bool in
             guard dict.attribute.flatMap(SwiftDeclarationAttributeKind.init(rawValue:)) == .available,
                 let offset = dict.offset, let length = dict.length,
-                let contents = file.contents.bridge().substringWithByteRange(start: offset, length: length) else {
+                let contents = file.stringView.substringWithByteRange(start: offset, length: length) else {
                     return false
             }
 

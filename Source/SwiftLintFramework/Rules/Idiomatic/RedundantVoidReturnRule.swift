@@ -23,7 +23,14 @@ public struct RedundantVoidReturnRule: ConfigurationProviderRule, SubstitutionCo
             "func foo() -> ()?\n",
             "func foo() -> ()!\n",
             "func foo() -> Void?\n",
-            "func foo() -> Void!\n"
+            "func foo() -> Void!\n",
+            """
+            struct A {
+                subscript(key: String) {
+                    print(key)
+                }
+            }
+            """
         ],
         triggeringExamples: [
             "func foo()↓ -> Void {}\n",
@@ -33,6 +40,7 @@ public struct RedundantVoidReturnRule: ConfigurationProviderRule, SubstitutionCo
             }
             """,
             "func foo()↓ -> () {}\n",
+            "func foo()↓ -> ( ) {}",
             """
             protocol Foo {
               func foo()↓ -> ()
@@ -51,9 +59,10 @@ public struct RedundantVoidReturnRule: ConfigurationProviderRule, SubstitutionCo
 
     private let pattern = "\\s*->\\s*(?:Void\\b|\\(\\s*\\))(?![?!])"
     private let excludingKinds = SyntaxKind.allKinds.subtracting([.typeidentifier])
+    private let functionKinds = SwiftDeclarationKind.functionKinds.subtracting([.functionSubscript])
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         return violationRanges(in: file, kind: kind, dictionary: dictionary).map {
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.severity,
@@ -61,16 +70,17 @@ public struct RedundantVoidReturnRule: ConfigurationProviderRule, SubstitutionCo
         }
     }
 
-    public func violationRanges(in file: File, kind: SwiftDeclarationKind,
-                                dictionary: [String: SourceKitRepresentable]) -> [NSRange] {
-        guard SwiftDeclarationKind.functionKinds.contains(kind),
+    public func violationRanges(in file: SwiftLintFile, kind: SwiftDeclarationKind,
+                                dictionary: SourceKittenDictionary) -> [NSRange] {
+        guard functionKinds.contains(kind),
+            !shouldReturnEarlyBasedOnTypeName(dictionary: dictionary),
             let nameOffset = dictionary.nameOffset,
             let nameLength = dictionary.nameLength,
             let length = dictionary.length,
             let offset = dictionary.offset,
             case let start = nameOffset + nameLength,
             case let end = dictionary.bodyOffset ?? offset + length,
-            case let contents = file.contents.bridge(),
+            case let contents = file.stringView,
             let range = contents.byteRangeToNSRange(start: start, length: end - start),
             file.match(pattern: "->", excludingSyntaxKinds: excludingKinds, range: range).count == 1,
             let match = file.match(pattern: pattern, excludingSyntaxKinds: excludingKinds, range: range).first else {
@@ -80,7 +90,23 @@ public struct RedundantVoidReturnRule: ConfigurationProviderRule, SubstitutionCo
         return [match]
     }
 
-    public func substitution(for violationRange: NSRange, in file: File) -> (NSRange, String) {
+    public func substitution(for violationRange: NSRange, in file: SwiftLintFile) -> (NSRange, String)? {
         return (violationRange, "")
+    }
+
+    private func shouldReturnEarlyBasedOnTypeName(dictionary: SourceKittenDictionary) -> Bool {
+        guard SwiftVersion.current >= .fourDotOne else {
+            return false
+        }
+
+        return !containsVoidReturnTypeBasedOnTypeName(dictionary: dictionary)
+    }
+
+    private func containsVoidReturnTypeBasedOnTypeName(dictionary: SourceKittenDictionary) -> Bool {
+        guard let typeName = dictionary.typeName else {
+            return false
+        }
+
+        return typeName == "Void" || typeName.components(separatedBy: .whitespaces).joined() == "()"
     }
 }

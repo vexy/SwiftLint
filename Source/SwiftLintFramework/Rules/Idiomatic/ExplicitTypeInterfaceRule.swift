@@ -67,28 +67,17 @@ public struct ExplicitTypeInterfaceRule: OptInRule, ConfigurationProviderRule {
         ]
     )
 
-    public func validate(file: File) -> [StyleViolation] {
-        return validate(file: file, dictionary: file.structure.dictionary, parentStructure: nil)
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
+        return file.structureDictionary.traverseWithParentDepthFirst { parent, subDict in
+            guard let kind = subDict.declarationKind else { return nil }
+            return validate(file: file, kind: kind, dictionary: subDict, parentStructure: parent)
+        }
     }
 
-    private func validate(file: File, dictionary: [String: SourceKitRepresentable],
-                          parentStructure: [String: SourceKitRepresentable]?) -> [StyleViolation] {
-        return dictionary.substructure.flatMap({ subDict -> [StyleViolation] in
-            var violations = validate(file: file, dictionary: subDict, parentStructure: dictionary)
-
-            if let kindString = subDict.kind,
-                let kind = SwiftDeclarationKind(rawValue: kindString) {
-                violations += validate(file: file, kind: kind, dictionary: subDict, parentStructure: dictionary)
-            }
-
-            return violations
-        })
-    }
-
-    private func validate(file: File,
+    private func validate(file: SwiftLintFile,
                           kind: SwiftDeclarationKind,
-                          dictionary: [String: SourceKitRepresentable],
-                          parentStructure: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                          dictionary: SourceKittenDictionary,
+                          parentStructure: SourceKittenDictionary) -> [StyleViolation] {
         guard configuration.allowedKinds.contains(kind),
             let offset = dictionary.offset,
             !dictionary.containsType,
@@ -110,39 +99,39 @@ public struct ExplicitTypeInterfaceRule: OptInRule, ConfigurationProviderRule {
     }
 }
 
-private extension Dictionary where Key == String, Value == SourceKitRepresentable {
+private extension SourceKittenDictionary {
     var containsType: Bool {
         return typeName != nil
     }
 
-    func isInitCall(file: File) -> Bool {
+    func isInitCall(file: SwiftLintFile) -> Bool {
         guard
             let nameOffset = nameOffset,
             let nameLength = nameLength,
-            case let contents = file.contents.bridge(),
-            let afterNameRange = contents.byteRangeToNSRange(start: nameOffset + nameLength, length: 0)
+            let afterNameRange = file.stringView.byteRangeToNSRange(start: nameOffset + nameLength, length: 0)
         else {
             return false
         }
 
-        let contentAfterName = contents.substring(from: afterNameRange.location)
+        let contents = file.stringView
+        let contentAfterName = contents.nsString.substring(from: afterNameRange.location)
         let initCallRegex =
             regex("^\\s*=\\s*(?:try[!?]?\\s+)?\\[?\\p{Lu}[^\\(\\s<]*(?:<[^\\>]*>)?(?::\\s*[^\\(\\n]+)?\\]?\\(")
 
         return initCallRegex.firstMatch(in: contentAfterName, options: [], range: contentAfterName.fullNSRange) != nil
     }
 
-    func isTypeReferenceAssignment(file: File) -> Bool {
+    func isTypeReferenceAssignment(file: SwiftLintFile) -> Bool {
         guard
             let nameOffset = nameOffset,
             let nameLength = nameLength,
-            case let contents = file.contents.bridge(),
-            let afterNameRange = contents.byteRangeToNSRange(start: nameOffset + nameLength, length: 0)
+            let afterNameRange = file.stringView.byteRangeToNSRange(start: nameOffset + nameLength, length: 0)
         else {
             return false
         }
 
-        let contentAfterName = contents.substring(from: afterNameRange.location)
+        let contents = file.stringView
+        let contentAfterName = contents.nsString.substring(from: afterNameRange.location)
         let typeAssignment = regex("^\\s*=\\s*(?:\\p{Lu}[^\\(\\s<]*(?:<[^\\>]*>)?\\.)*self")
 
         return typeAssignment.firstMatch(in: contentAfterName, options: [], range: contentAfterName.fullNSRange) != nil
@@ -157,9 +146,8 @@ private extension Dictionary where Key == String, Value == SourceKitRepresentabl
     }
 
     func contains(_ statements: Set<StatementKind>) -> Bool {
-        guard let kind = kind,
-              let statement = StatementKind(rawValue: kind) else {
-                return false
+        guard let statement = statementKind else {
+            return false
         }
         return statements.contains(statement)
     }
@@ -178,11 +166,11 @@ private extension Dictionary where Key == String, Value == SourceKitRepresentabl
     }
 }
 
-private extension File {
+private extension SwiftLintFile {
     var captureGroupByteRanges: [NSRange] {
         return match(pattern: "\\{\\s*\\[(\\s*\\w+\\s+\\w+,*)+\\]",
                      excludingSyntaxKinds: SyntaxKind.commentKinds)
-                .compactMap { contents.bridge().NSRangeToByteRange(start: $0.location, length: $0.length) }
+                .compactMap { stringView.NSRangeToByteRange(start: $0.location, length: $0.length) }
     }
 }
 

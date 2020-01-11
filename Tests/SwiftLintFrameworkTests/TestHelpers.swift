@@ -5,13 +5,13 @@ import XCTest
 
 private let violationMarker = "↓"
 
-private extension File {
-    static func temporary(withContents contents: String) -> File {
+private extension SwiftLintFile {
+    static func temporary(withContents contents: String) -> SwiftLintFile {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("swift")
         _ = try? contents.data(using: .utf8)!.write(to: url)
-        return File(path: url.path)!
+        return SwiftLintFile(path: url.path)!
     }
 
     func makeCompilerArguments() -> [String] {
@@ -29,21 +29,82 @@ let allRuleIdentifiers = Array(masterRuleList.list.keys)
 
 func violations(_ string: String, config: Configuration = Configuration()!,
                 requiresFileOnDisk: Bool = false) -> [StyleViolation] {
-    File.clearCaches()
+    SwiftLintFile.clearCaches()
     let stringStrippingMarkers = string.replacingOccurrences(of: violationMarker, with: "")
     guard requiresFileOnDisk else {
-        let file = File(contents: stringStrippingMarkers)
-        let linter = Linter(file: file, configuration: config)
-        return linter.styleViolations
+        let file = SwiftLintFile(contents: stringStrippingMarkers)
+        let storage = RuleStorage()
+        let linter = Linter(file: file, configuration: config).collect(into: storage)
+        return linter.styleViolations(using: storage)
     }
 
-    let file = File.temporary(withContents: stringStrippingMarkers)
-    let linter = Linter(file: file, configuration: config, compilerArguments: file.makeCompilerArguments())
-    return linter.styleViolations.map { violation in
-        let locationWithoutFile = Location(file: nil, line: violation.location.line,
-                                           character: violation.location.character)
-        return StyleViolation(ruleDescription: violation.ruleDescription, severity: violation.severity,
-                              location: locationWithoutFile, reason: violation.reason)
+    let file = SwiftLintFile.temporary(withContents: stringStrippingMarkers)
+    let storage = RuleStorage()
+    let collecter = Linter(file: file, configuration: config, compilerArguments: file.makeCompilerArguments())
+    let linter = collecter.collect(into: storage)
+    return linter.styleViolations(using: storage).withoutFiles()
+}
+
+extension Collection where Element == String {
+    func violations(config: Configuration = Configuration()!, requiresFileOnDisk: Bool = false)
+        -> [StyleViolation] {
+            let makeFile = requiresFileOnDisk ? SwiftLintFile.temporary : SwiftLintFile.init(contents:)
+            return map(makeFile).violations(config: config, requiresFileOnDisk: requiresFileOnDisk)
+    }
+
+    func corrections(config: Configuration = Configuration()!, requiresFileOnDisk: Bool = false) -> [Correction] {
+        let makeFile = requiresFileOnDisk ? SwiftLintFile.temporary : SwiftLintFile.init(contents:)
+        return map(makeFile).corrections(config: config, requiresFileOnDisk: requiresFileOnDisk)
+    }
+}
+
+extension Collection where Element: SwiftLintFile {
+    func violations(config: Configuration = Configuration()!, requiresFileOnDisk: Bool = false)
+        -> [StyleViolation] {
+            let storage = RuleStorage()
+            let violations = map({ file in
+                Linter(file: file, configuration: config,
+                       compilerArguments: requiresFileOnDisk ? file.makeCompilerArguments() : [])
+            }).map({ linter in
+                linter.collect(into: storage)
+            }).flatMap({ linter in
+                linter.styleViolations(using: storage)
+            })
+            return requiresFileOnDisk ? violations.withoutFiles() : violations
+    }
+
+    func corrections(config: Configuration = Configuration()!, requiresFileOnDisk: Bool = false) -> [Correction] {
+        let storage = RuleStorage()
+        let corrections = map({ file in
+            Linter(file: file, configuration: config,
+                   compilerArguments: requiresFileOnDisk ? file.makeCompilerArguments() : [])
+        }).map({ linter in
+            linter.collect(into: storage)
+        }).flatMap({ linter in
+            linter.correct(using: storage)
+        })
+        return requiresFileOnDisk ? corrections.withoutFiles() : corrections
+    }
+}
+
+private extension Collection where Element == StyleViolation {
+    func withoutFiles() -> [StyleViolation] {
+        return map { violation in
+            let locationWithoutFile = Location(file: nil, line: violation.location.line,
+                                               character: violation.location.character)
+            return StyleViolation(ruleDescription: violation.ruleDescription, severity: violation.severity,
+                                  location: locationWithoutFile, reason: violation.reason)
+        }
+    }
+}
+
+private extension Collection where Element == Correction {
+    func withoutFiles() -> [Correction] {
+        return map { correction in
+            let locationWithoutFile = Location(file: nil, line: correction.location.line,
+                                               character: correction.location.character)
+            return Correction(ruleDescription: correction.ruleDescription, location: locationWithoutFile)
+        }
     }
 }
 
@@ -60,7 +121,7 @@ private func cleanedContentsAndMarkerOffsets(from contents: String) -> (String, 
 }
 
 private func render(violations: [StyleViolation], in contents: String) -> String {
-    var contents = contents.bridge().lines().map { $0.content }
+    var contents = StringView(contents).lines.map { $0.content }
     for violation in violations.sorted(by: { $0.location > $1.location }) {
         guard let line = violation.location.line,
             let character = violation.location.character else { continue }
@@ -80,7 +141,7 @@ private func render(violations: [StyleViolation], in contents: String) -> String
 }
 
 private func render(locations: [Location], in contents: String) -> String {
-    var contents = contents.bridge().lines().map { $0.content }
+    var contents = StringView(contents).lines.map { $0.content }
     for location in locations.sorted(by: > ) {
         guard let line = location.line, let character = location.character else { continue }
         let content = NSMutableString(string: contents[line - 1])
@@ -93,13 +154,15 @@ private func render(locations: [Location], in contents: String) -> String {
 private extension Configuration {
     func assertCorrection(_ before: String, expected: String) {
         let (cleanedBefore, markerOffsets) = cleanedContentsAndMarkerOffsets(from: before)
-        let file = File.temporary(withContents: cleanedBefore)
+        let file = SwiftLintFile.temporary(withContents: cleanedBefore)
         // expectedLocations are needed to create before call `correct()`
         let expectedLocations = markerOffsets.map { Location(file: file, characterOffset: $0) }
         let includeCompilerArguments = self.rules.contains(where: { $0 is AnalyzerRule })
         let compilerArguments = includeCompilerArguments ? file.makeCompilerArguments() : []
-        let linter = Linter(file: file, configuration: self, compilerArguments: compilerArguments)
-        let corrections = linter.correct().sorted { $0.location < $1.location }
+        let storage = RuleStorage()
+        let collecter = Linter(file: file, configuration: self, compilerArguments: compilerArguments)
+        let linter = collecter.collect(into: storage)
+        let corrections = linter.correct(using: storage).sorted { $0.location < $1.location }
         if expectedLocations.isEmpty {
             XCTAssertEqual(corrections.count, before != expected ? 1 : 0)
         } else {
@@ -290,7 +353,7 @@ extension XCTestCase {
                 }
                 continue
             }
-            let file = File(contents: cleanTrigger)
+            let file = SwiftLintFile(contents: cleanTrigger)
             let expectedLocations = markerOffsets.map { Location(file: file, characterOffset: $0) }
 
             // Assert violations on unexpected location

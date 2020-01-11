@@ -1,7 +1,8 @@
 import Foundation
 import SourceKittenFramework
 
-public struct WeakDelegateRule: ASTRule, ConfigurationProviderRule, AutomaticTestableRule {
+public struct WeakDelegateRule: ASTRule, SubstitutionCorrectableASTRule, ConfigurationProviderRule,
+    AutomaticTestableRule {
     public var configuration = SeverityConfiguration(.warning)
 
     public init() {}
@@ -29,11 +30,25 @@ public struct WeakDelegateRule: ASTRule, ConfigurationProviderRule, AutomaticTes
         triggeringExamples: [
             "class Foo {\n  ↓var delegate: SomeProtocol?\n}\n",
             "class Foo {\n  ↓var scrollDelegate: ScrollDelegate?\n}\n"
+        ],
+        corrections: [
+            "class Foo {\n  ↓var delegate: SomeProtocol?\n}\n": "class Foo {\n  weak var delegate: SomeProtocol?\n}\n",
+            "class Foo {\n  ↓var scrollDelegate: ScrollDelegate?\n}\n":
+                "class Foo {\n  weak var scrollDelegate: ScrollDelegate?\n}\n"
         ]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
+        return violationRanges(in: file, kind: kind, dictionary: dictionary).map {
+            StyleViolation(ruleDescription: type(of: self).description,
+                           severity: configuration.severity,
+                           location: Location(file: file, characterOffset: $0.location))
+        }
+    }
+
+    public func violationRanges(in file: SwiftLintFile, kind: SwiftDeclarationKind,
+                                dictionary: SourceKittenDictionary) -> [NSRange] {
         guard kind == .varInstance else {
             return []
         }
@@ -50,7 +65,7 @@ public struct WeakDelegateRule: ASTRule, ConfigurationProviderRule, AutomaticTes
 
         // if the declaration is inside a protocol
         if let offset = dictionary.offset,
-            !protocolDeclarations(forByteOffset: offset, structure: file.structure).isEmpty {
+            !protocolDeclarations(forByteOffset: offset, structureDictionary: file.structureDictionary).isEmpty {
             return []
         }
 
@@ -58,43 +73,25 @@ public struct WeakDelegateRule: ASTRule, ConfigurationProviderRule, AutomaticTes
         let isComputed = (dictionary.bodyLength ?? 0) > 0
         guard !isComputed else { return [] }
 
-        // Violation found!
-        let location: Location
-        if let offset = dictionary.offset {
-            location = Location(file: file, byteOffset: offset)
-        } else {
-            location = Location(file: file.path)
-        }
+        guard let offset = dictionary.offset,
+            let range = file.stringView.byteRangeToNSRange(start: offset, length: 3) else { return [] }
 
-        return [
-            StyleViolation(
-                ruleDescription: type(of: self).description,
-                severity: configuration.severity,
-                location: location
-            )
-        ]
+        return [range]
+    }
+
+    public func substitution(for violationRange: NSRange, in file: SwiftLintFile) -> (NSRange, String)? {
+        return (violationRange, "weak var")
     }
 
     private func protocolDeclarations(forByteOffset byteOffset: Int,
-                                      structure: Structure) -> [[String: SourceKitRepresentable]] {
-        var results = [[String: SourceKitRepresentable]]()
-
-        func parse(dictionary: [String: SourceKitRepresentable]) {
-            // Only accepts protocols declarations which contains a body and contains the
-            // searched byteOffset
-            if let kindString = (dictionary.kind),
-                SwiftDeclarationKind(rawValue: kindString) == .protocol,
-                let offset = dictionary.bodyOffset,
-                let length = dictionary.bodyLength {
-                let byteRange = NSRange(location: offset, length: length)
-
-                if NSLocationInRange(byteOffset, byteRange) {
-                    results.append(dictionary)
-                }
+                                      structureDictionary: SourceKittenDictionary) -> [SourceKittenDictionary] {
+        return structureDictionary.traverseBreadthFirst { dictionary in
+            guard dictionary.declarationKind == .protocol,
+                let byteRange = dictionary.byteRange,
+                NSLocationInRange(byteOffset, byteRange) else {
+                    return nil
             }
-            dictionary.substructure.forEach(parse)
+            return [dictionary]
         }
-        parse(dictionary: structure.dictionary)
-        return results
     }
 }

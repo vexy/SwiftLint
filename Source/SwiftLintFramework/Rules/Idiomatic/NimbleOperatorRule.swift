@@ -91,7 +91,7 @@ public struct NimbleOperatorRule: ConfigurationProviderRule, OptInRule, Correcta
         "beFalse": (to: "==", toNot: "!=", .nullary(analogueValue: "false"))
     ]
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         let matches = violationMatchesRanges(in: file)
         return matches.map {
             StyleViolation(ruleDescription: type(of: self).description,
@@ -100,7 +100,7 @@ public struct NimbleOperatorRule: ConfigurationProviderRule, OptInRule, Correcta
         }
     }
 
-    private func violationMatchesRanges(in file: File) -> [NSRange] {
+    private func violationMatchesRanges(in file: SwiftLintFile) -> [NSRange] {
         let operandPattern = "(.(?!expect\\())+?"
 
         let operatorsPattern = "(" + predicatesMapping.map { name, predicateDescription in
@@ -117,25 +117,24 @@ public struct NimbleOperatorRule: ConfigurationProviderRule, OptInRule, Correcta
 
         return file.match(pattern: pattern)
             .filter { _, kinds in
-                kinds.filter(excludingKinds.contains).isEmpty && kinds.first == .identifier
+                excludingKinds.isDisjoint(with: kinds) && kinds.first == .identifier
             }.map { $0.0 }
             .filter { range in
-                let contents = file.contents.bridge()
+                let contents = file.stringView
                 guard let byteRange = contents.NSRangeToByteRange(start: range.location, length: range.length) else {
                     return false
                 }
 
-                let containsCall = file.structure.structures(forByteOffset: byteRange.upperBound - 1)
+                let containsCall = file.structureDictionary.structures(forByteOffset: byteRange.upperBound - 1)
                     .contains(where: { dict -> Bool in
-                        return dict.kind.flatMap(SwiftExpressionKind.init) == .call &&
-                            (dict.name ?? "").starts(with: "expect")
+                        return dict.expressionKind == .call && (dict.name ?? "").starts(with: "expect")
                     })
 
                 return containsCall
             }
     }
 
-    public func correct(file: File) -> [Correction] {
+    public func correct(file: SwiftLintFile) -> [Correction] {
         let matches = violationMatchesRanges(in: file)
             .filter { !file.ruleEnabled(violatingRanges: [$0], for: self).isEmpty }
         guard !matches.isEmpty else { return [] }

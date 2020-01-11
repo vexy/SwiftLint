@@ -14,7 +14,8 @@ public struct RedundantTypeAnnotationRule: OptInRule, SubstitutionCorrectableRul
         kind: .idiomatic,
         nonTriggeringExamples: [
             "var url = URL()",
-            "var url: CustomStringConvertible = URL()"
+            "var url: CustomStringConvertible = URL()",
+            "@IBInspectable var color: UIColor = UIColor.white"
         ],
         triggeringExamples: [
             "var url↓:URL=URL()",
@@ -53,7 +54,7 @@ public struct RedundantTypeAnnotationRule: OptInRule, SubstitutionCorrectableRul
         ]
     )
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         return violationRanges(in: file).map { range in
             StyleViolation(
                 ruleDescription: type(of: self).description,
@@ -63,24 +64,24 @@ public struct RedundantTypeAnnotationRule: OptInRule, SubstitutionCorrectableRul
         }
     }
 
-    public func substitution(for violationRange: NSRange, in file: File) -> (NSRange, String) {
+    public func substitution(for violationRange: NSRange, in file: SwiftLintFile) -> (NSRange, String)? {
         return (violationRange, "")
     }
 
-    public func violationRanges(in file: File) -> [NSRange] {
+    public func violationRanges(in file: SwiftLintFile) -> [NSRange] {
         let typeAnnotationPattern = ":\\s?\\w+"
         let pattern = "(var|let)\\s?\\w+\(typeAnnotationPattern)\\s?=\\s?\\w+(\\(|.)"
         let foundRanges = file.match(pattern: pattern, with: [.keyword, .identifier, .typeidentifier, .identifier])
         return foundRanges
-            .filter { !isFalsePositive(in: file, range: $0) }
+            .filter { !isFalsePositive(in: file, range: $0) && !isIBInspectable(range: $0, file: file) }
             .compactMap {
                 file.match(pattern: typeAnnotationPattern,
                            excludingSyntaxKinds: SyntaxKind.commentAndStringKinds, range: $0).first
             }
     }
 
-    private func isFalsePositive(in file: File, range: NSRange) -> Bool {
-        let substring = file.contents.bridge().substring(with: range)
+    private func isFalsePositive(in file: SwiftLintFile, range: NSRange) -> Bool {
+        let substring = file.stringView.substring(with: range)
 
         let components = substring.components(separatedBy: "=")
         let charactersToTrimFromRhs = CharacterSet(charactersIn: ".(").union(.whitespaces)
@@ -94,5 +95,16 @@ public struct RedundantTypeAnnotationRule: OptInRule, SubstitutionCorrectableRul
 
         let rhsTypeName = components[1].trimmingCharacters(in: charactersToTrimFromRhs)
         return lhsTypeName != rhsTypeName
+    }
+
+    private func isIBInspectable(range: NSRange, file: SwiftLintFile) -> Bool {
+        guard let byteRange = file.stringView.NSRangeToByteRange(start: range.location, length: range.length),
+            let dict = file.structureDictionary.structures(forByteOffset: byteRange.location).last,
+            let kind = dict.declarationKind,
+            SwiftDeclarationKind.variableKinds.contains(kind) else {
+                return false
+        }
+
+        return dict.enclosedSwiftAttributes.contains(.ibinspectable)
     }
 }

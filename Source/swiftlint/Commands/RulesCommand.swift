@@ -6,7 +6,6 @@ import Glibc
 #else
 #error("Unsupported platform")
 #endif
-import Result
 import SwiftLintFramework
 import SwiftyTextTable
 
@@ -47,12 +46,12 @@ struct RulesCommand: CommandProtocol {
         let configuration = Configuration(options: options)
         let rules = ruleList(for: options, configuration: configuration)
 
-        print(TextTable(ruleList: rules, configuration: configuration).render())
+        print(TextTable(ruleList: rules, configuration: configuration, verbose: options.verbose).render())
         return .success(())
     }
 
     private func ruleList(for options: RulesOptions, configuration: Configuration) -> RuleList {
-        guard options.onlyEnabledRules || options.onlyDisabledRules else {
+        guard options.onlyEnabledRules || options.onlyDisabledRules || options.onlyCorrectableRules else {
             return masterRuleList
         }
 
@@ -64,6 +63,8 @@ struct RulesCommand: CommandProtocol {
             if options.onlyEnabledRules && configuredRule == nil {
                 return nil
             } else if options.onlyDisabledRules && configuredRule != nil {
+                return nil
+            } else if options.onlyCorrectableRules && !(configuredRule is CorrectableRule) {
                 return nil
             }
 
@@ -79,15 +80,19 @@ struct RulesOptions: OptionsProtocol {
     let configurationFile: String
     fileprivate let onlyEnabledRules: Bool
     fileprivate let onlyDisabledRules: Bool
+    fileprivate let onlyCorrectableRules: Bool
+    fileprivate let verbose: Bool
 
     // swiftlint:disable line_length
-    static func create(_ configurationFile: String) -> (_ ruleID: String) -> (_ onlyEnabledRules: Bool) -> (_ onlyDisabledRules: Bool) -> RulesOptions {
-        return { ruleID in { onlyEnabledRules in { onlyDisabledRules in
+    static func create(_ configurationFile: String) -> (_ ruleID: String) -> (_ onlyEnabledRules: Bool) -> (_ onlyDisabledRules: Bool) -> (_ onlyCorrectableRules: Bool) -> (_ verbose: Bool) -> RulesOptions {
+        return { ruleID in { onlyEnabledRules in { onlyDisabledRules in { onlyCorrectableRules in { verbose in
             self.init(ruleID: (ruleID.isEmpty ? nil : ruleID),
                       configurationFile: configurationFile,
                       onlyEnabledRules: onlyEnabledRules,
-                      onlyDisabledRules: onlyDisabledRules)
-        }}}
+                      onlyDisabledRules: onlyDisabledRules,
+                      onlyCorrectableRules: onlyCorrectableRules,
+                      verbose: verbose)
+        }}}}}
     }
 
     static func evaluate(_ mode: CommandMode) -> Result<RulesOptions, CommandantError<CommandantError<()>>> {
@@ -101,13 +106,19 @@ struct RulesOptions: OptionsProtocol {
             <*> mode <| Switch(flag: "d",
                                key: "disabled",
                                usage: "only display disabled rules")
+            <*> mode <| Switch(flag: "c",
+                               key: "correctable",
+                               usage: "only display correctable rules")
+            <*> mode <| Switch(flag: "v",
+                               key: "verbose",
+                               usage: "display full configuration detail")
     }
 }
 
 // MARK: - SwiftyTextTable
 
 extension TextTable {
-    init(ruleList: RuleList, configuration: Configuration) {
+    init(ruleList: RuleList, configuration: Configuration, verbose: Bool) {
         let columns = [
             TextTableColumn(header: "identifier"),
             TextTableColumn(header: "opt-in"),
@@ -122,10 +133,11 @@ extension TextTable {
         func truncate(_ string: String) -> String {
             let stringWithNoNewlines = string.replacingOccurrences(of: "\n", with: "\\n")
             let minWidth = "configuration".count - "...".count
-            let configurationStartColumn = 112
+            let configurationStartColumn = 124
+            let maxWidth = verbose ? Int.max : Terminal.currentWidth()
             let truncatedEndIndex = stringWithNoNewlines.index(
                 stringWithNoNewlines.startIndex,
-                offsetBy: max(minWidth, Terminal.currentWidth() - configurationStartColumn),
+                offsetBy: max(minWidth, maxWidth - configurationStartColumn),
                 limitedBy: stringWithNoNewlines.endIndex
             )
             if let truncatedEndIndex = truncatedEndIndex {

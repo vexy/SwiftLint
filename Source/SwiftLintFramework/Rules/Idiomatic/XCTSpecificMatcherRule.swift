@@ -16,9 +16,9 @@ public struct XCTSpecificMatcherRule: ASTRule, OptInRule, ConfigurationProviderR
         triggeringExamples: XCTSpecificMatcherRuleExamples.triggeringExamples
     )
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: SwiftExpressionKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard
             kind == .call,
             let offset = dictionary.offset,
@@ -50,7 +50,7 @@ public struct XCTSpecificMatcherRule: ASTRule, OptInRule, ConfigurationProviderR
                 guard
                     let argOffset = argument.offset,
                     let argLength = argument.length,
-                    let body = file.contents.bridge().substringWithByteRange(start: argOffset, length: argLength)
+                    let body = file.stringView.substringWithByteRange(start: argOffset, length: argLength)
                     else { return nil }
 
                 return body

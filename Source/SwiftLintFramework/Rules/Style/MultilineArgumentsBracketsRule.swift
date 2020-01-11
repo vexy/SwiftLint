@@ -75,14 +75,14 @@ public struct MultilineArgumentsBracketsRule: ASTRule, OptInRule, ConfigurationP
         ]
     )
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: SwiftExpressionKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard
             kind == .call,
             let bodyOffset = dictionary.bodyOffset,
             let bodyLength = dictionary.bodyLength,
-            let range = file.contents.bridge().byteRangeToNSRange(start: bodyOffset, length: bodyLength)
+            let range = file.stringView.byteRangeToNSRange(start: bodyOffset, length: bodyLength)
         else {
             return []
         }

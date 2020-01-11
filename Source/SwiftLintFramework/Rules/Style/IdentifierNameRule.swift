@@ -23,8 +23,8 @@ public struct IdentifierNameRule: ASTRule, ConfigurationProviderRule {
         deprecatedAliases: ["variable_name"]
     )
 
-    public func validate(file: File, kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, kind: SwiftDeclarationKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         guard !dictionary.enclosedSwiftAttributes.contains(.override) else {
             return []
         }
@@ -40,7 +40,7 @@ public struct IdentifierNameRule: ASTRule, ConfigurationProviderRule {
             let type = self.type(for: kind)
             if !isFunction {
                 let allowedSymbols = configuration.allowedSymbols.union(.alphanumerics)
-                if !allowedSymbols.isSuperset(of: CharacterSet(safeCharactersIn: name)) {
+                if !allowedSymbols.isSuperset(of: CharacterSet(charactersIn: name)) {
                     return [
                         StyleViolation(ruleDescription: description,
                                        severity: .error,
@@ -79,7 +79,7 @@ public struct IdentifierNameRule: ASTRule, ConfigurationProviderRule {
         } ?? []
     }
 
-    private func validateName(dictionary: [String: SourceKitRepresentable],
+    private func validateName(dictionary: SourceKittenDictionary,
                               kind: SwiftDeclarationKind) -> (name: String, offset: Int)? {
         guard var name = dictionary.name,
             let offset = dictionary.offset,
@@ -131,6 +131,6 @@ private extension String {
 
     var isOperator: Bool {
         let operators = ["/", "=", "-", "+", "!", "*", "|", "^", "~", "?", ".", "%", "<", ">", "&"]
-        return !operators.filter(hasPrefix).isEmpty
+        return operators.contains(where: hasPrefix)
     }
 }

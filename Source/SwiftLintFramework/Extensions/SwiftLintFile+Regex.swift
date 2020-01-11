@@ -11,7 +11,7 @@ internal func regex(_ pattern: String,
     return try! .cached(pattern: pattern, options: options)
 }
 
-extension File {
+extension SwiftLintFile {
     internal func regions(restrictingRuleIdentifiers: Set<RuleIdentifier>? = nil) -> [Region] {
         var regions = [Region]()
         var disabledRules = Set<RuleIdentifier>()
@@ -58,11 +58,19 @@ extension File {
         if sourcekitdFailed {
             return []
         }
-        let contents = self.contents.bridge()
-        let range = range ?? NSRange(location: 0, length: contents.length)
+        let contents = stringView
+        let range = range ?? stringView.range
         let pattern = "swiftlint:(enable|disable)(:previous|:this|:next)?\\ [^\\n]+"
-        return match(pattern: pattern, with: [.comment], range: range).compactMap { range in
-            return Command(string: contents, range: range)
+        return match(pattern: pattern, range: range).filter { match in
+            return Set(match.1).isSubset(of: [.comment, .commentURL])
+        }.compactMap { match -> Command? in
+            let range = match.0
+            let actionString = contents.substring(with: range)
+            guard let lineAndCharacter = stringView.lineAndCharacter(forCharacterOffset: NSMaxRange(range))
+                else { return nil }
+            return Command(actionString: actionString,
+                           line: lineAndCharacter.line,
+                           character: lineAndCharacter.character)
         }.flatMap { command in
             return command.expand()
         }
@@ -95,11 +103,11 @@ extension File {
     }
 
     internal func matchesAndTokens(matching pattern: String,
-                                   range: NSRange? = nil) -> [(NSTextCheckingResult, [SyntaxToken])] {
-        let contents = self.contents.bridge()
-        let range = range ?? NSRange(location: 0, length: contents.length)
+                                   range: NSRange? = nil) -> [(NSTextCheckingResult, [SwiftLintSyntaxToken])] {
+        let contents = stringView
+        let range = range ?? stringView.range
         let syntax = syntaxMap
-        return regex(pattern).matches(in: self.contents, options: [], range: range).map { match in
+        return regex(pattern).matches(in: contents, options: [], range: range).map { match in
             let matchByteRange = contents.NSRangeToByteRange(start: match.range.location,
                                                              length: match.range.length) ?? match.range
             let tokensInRange = syntax.tokens(inByteRange: matchByteRange)
@@ -115,13 +123,13 @@ extension File {
     }
 
     internal func rangesAndTokens(matching pattern: String,
-                                  range: NSRange? = nil) -> [(NSRange, [SyntaxToken])] {
+                                  range: NSRange? = nil) -> [(NSRange, [SwiftLintSyntaxToken])] {
         return matchesAndTokens(matching: pattern, range: range).map { ($0.0.range, $0.1) }
     }
 
-    internal func match(pattern: String, range: NSRange? = nil) -> [(NSRange, [SyntaxKind])] {
+    internal func match(pattern: String, range: NSRange? = nil, captureGroup: Int = 0) -> [(NSRange, [SyntaxKind])] {
         return matchesAndSyntaxKinds(matching: pattern, range: range).map { textCheckingResult, syntaxKinds in
-            (textCheckingResult.range, syntaxKinds)
+            (textCheckingResult.range(at: captureGroup), syntaxKinds)
         }
     }
 
@@ -131,7 +139,7 @@ extension File {
         }
         var results = [[SwiftDeclarationKind]](repeating: [], count: lines.count + 1)
         var lineIterator = lines.makeIterator()
-        var structureIterator = structure.kinds().makeIterator()
+        var structureIterator = structureDictionary.kinds().makeIterator()
         var maybeLine = lineIterator.next()
         var maybeStructure = structureIterator.next()
         while let line = maybeLine, let structure = maybeStructure {
@@ -149,17 +157,17 @@ extension File {
         return results
     }
 
-    internal func syntaxTokensByLine() -> [[SyntaxToken]]? {
+    internal func syntaxTokensByLine() -> [[SwiftLintSyntaxToken]]? {
         if sourcekitdFailed {
             return nil
         }
-        var results = [[SyntaxToken]](repeating: [], count: lines.count + 1)
+        var results = [[SwiftLintSyntaxToken]](repeating: [], count: lines.count + 1)
         var tokenGenerator = syntaxMap.tokens.makeIterator()
         var lineGenerator = lines.makeIterator()
         var maybeLine = lineGenerator.next()
         var maybeToken = tokenGenerator.next()
         while let line = maybeLine, let token = maybeToken {
-            let tokenRange = NSRange(location: token.offset, length: token.length)
+            let tokenRange = token.range
             if NSLocationInRange(token.offset, line.byteRange) ||
                 NSLocationInRange(line.byteRange.location, tokenRange) {
                     results[line.index].append(token)
@@ -200,9 +208,10 @@ extension File {
      */
     internal func match(pattern: String,
                         excludingSyntaxKinds syntaxKinds: Set<SyntaxKind>,
-                        range: NSRange? = nil) -> [NSRange] {
-        return match(pattern: pattern, range: range)
-            .filter { $0.1.filter(syntaxKinds.contains).isEmpty }
+                        range: NSRange? = nil,
+                        captureGroup: Int = 0) -> [NSRange] {
+        return match(pattern: pattern, range: range, captureGroup: captureGroup)
+            .filter { syntaxKinds.isDisjoint(with: $0.1) }
             .map { $0.0 }
     }
 
@@ -217,8 +226,8 @@ extension File {
         if matches.isEmpty {
             return []
         }
-        let range = range ?? NSRange(location: 0, length: contents.bridge().length)
-        let exclusionRanges = regex(excludingPattern).matches(in: contents, options: [],
+        let range = range ?? stringView.range
+        let exclusionRanges = regex(excludingPattern).matches(in: stringView, options: [],
                                                               range: range).map(exclusionMapping)
         return matches.filter { !$0.intersects(exclusionRanges) }
     }
@@ -233,7 +242,8 @@ extension File {
         _ = fileHandle.seekToEndOfFile()
         fileHandle.write(stringData)
         fileHandle.closeFile()
-        contents += string
+
+        file.contents += string
     }
 
     internal func write<S: StringProtocol>(_ string: S) {
@@ -251,7 +261,7 @@ extension File {
         } catch {
             queuedFatalError("can't write file to \(path)")
         }
-        contents = String(string)
+        file.contents = String(string)
         invalidateCache()
     }
 
@@ -274,7 +284,7 @@ extension File {
     fileprivate func numberOfCommentAndWhitespaceOnlyLines(startLine: Int, endLine: Int) -> Int {
         let commentKinds = SyntaxKind.commentKinds
         return syntaxKindsByLines[startLine...endLine].filter { kinds in
-            kinds.filter { !commentKinds.contains($0) }.isEmpty
+            commentKinds.isSuperset(of: kinds)
         }.count
     }
 
@@ -317,18 +327,16 @@ extension File {
         return corrections
     }
 
-    internal func isACL(token: SyntaxToken) -> Bool {
-        guard SyntaxKind(rawValue: token.type) == .attributeBuiltin else {
+    internal func isACL(token: SwiftLintSyntaxToken) -> Bool {
+        guard token.kind == .attributeBuiltin else {
             return false
         }
 
-        let aclString = contents.bridge().substringWithByteRange(start: token.offset,
-                                                                 length: token.length)
+        let aclString = contents(for: token)
         return aclString.flatMap(AccessControlLevel.init(description:)) != nil
     }
 
-    internal func contents(for token: SyntaxToken) -> String? {
-        return contents.bridge().substringWithByteRange(start: token.offset,
-                                                        length: token.length)
+    internal func contents(for token: SwiftLintSyntaxToken) -> String? {
+        return stringView.substringWithByteRange(start: token.offset, length: token.length)
     }
 }

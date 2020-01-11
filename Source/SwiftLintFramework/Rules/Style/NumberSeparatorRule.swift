@@ -20,7 +20,7 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
         corrections: NumberSeparatorRuleExamples.corrections
     )
 
-    public func validate(file: File) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
         return violatingRanges(in: file).map { range, _ in
             return StyleViolation(ruleDescription: type(of: self).description,
                                   severity: configuration.severityConfiguration.severity,
@@ -28,11 +28,11 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
         }
     }
 
-    private func violatingRanges(in file: File) -> [(NSRange, String)] {
-        let numberTokens = file.syntaxMap.tokens.filter { SyntaxKind(rawValue: $0.type) == .number }
-        return numberTokens.compactMap { (token: SyntaxToken) -> (NSRange, String)? in
+    private func violatingRanges(in file: SwiftLintFile) -> [(NSRange, String)] {
+        let numberTokens = file.syntaxMap.tokens.filter { $0.kind == .number }
+        return numberTokens.compactMap { (token: SwiftLintSyntaxToken) -> (NSRange, String)? in
             guard
-                let content = contentFrom(file: file, token: token),
+                let content = file.contents(for: token),
                 isDecimal(number: content),
                 !isInValidRanges(number: content)
             else {
@@ -60,9 +60,9 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
             guard let integerSubstring = components.first,
                 case let (valid, expected) = isValid(number: integerSubstring, isFraction: false),
                 !valid || !validFraction,
-                let range = file.contents.bridge().byteRangeToNSRange(start: token.offset,
-                                                                      length: token.length) else {
-                    return nil
+                let range = file.stringView.byteRangeToNSRange(start: token.offset,
+                                                               length: token.length) else {
+                                                                    return nil
             }
 
             var corrected = ""
@@ -85,7 +85,7 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
         }
     }
 
-    public func correct(file: File) -> [Correction] {
+    public func correct(file: SwiftLintFile) -> [Correction] {
         let violatingRanges = self.violatingRanges(in: file).filter { range, _ in
             return !file.ruleEnabled(violatingRanges: [range], for: self).isEmpty
         }
@@ -110,9 +110,9 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
 
     private func isDecimal(number: String) -> Bool {
         let lowercased = number.lowercased()
-        let prefixes = ["0x", "0o", "0b"].flatMap { [$0, "-" + $0, "+" + $0] }
+        let prefixes = ["0x", "0o", "0b"].flatMap { [$0, "-\($0)", "+\($0)"] }
 
-        return prefixes.filter { lowercased.hasPrefix($0) }.isEmpty
+        return !prefixes.contains(where: lowercased.hasPrefix)
     }
 
     private func isInValidRanges(number: String) -> Bool {
@@ -137,28 +137,26 @@ public struct NumberSeparatorRule: OptInRule, CorrectableRule, ConfigurationProv
 
         let shouldAddSeparators = clean.count >= minimumLength
 
-        for (idx, char) in reversedIfNeeded(Array(clean), reversed: !isFraction).enumerated() {
-            if idx % 3 == 0 && idx > 0 && shouldAddSeparators {
+        var numerals = 0
+        for char in reversedIfNeeded(clean, reversed: !isFraction) {
+            defer { correctComponents.append(String(char)) }
+            guard char.unicodeScalars.allSatisfy(CharacterSet.decimalDigits.contains) else { continue }
+
+            if numerals % 3 == 0 && numerals > 0 && shouldAddSeparators {
                 correctComponents.append("_")
             }
-
-            correctComponents.append(String(char))
+            numerals += 1
         }
 
         let expected = reversedIfNeeded(correctComponents, reversed: !isFraction).joined()
         return (expected == number, expected)
     }
 
-    private func reversedIfNeeded<T>(_ array: [T], reversed: Bool) -> [T] {
+    private func reversedIfNeeded<T>(_ collection: T, reversed: Bool) -> [T.Element] where T: Collection {
         if reversed {
-            return array.reversed()
+            return collection.reversed()
         }
 
-        return array
-    }
-
-    private func contentFrom(file: File, token: SyntaxToken) -> String? {
-        return file.contents.bridge().substringWithByteRange(start: token.offset,
-                                                             length: token.length)
+        return Array(collection)
     }
 }

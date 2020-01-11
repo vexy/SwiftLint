@@ -13,12 +13,15 @@ internal struct NumberSeparatorRuleExamples {
                 "let hex = \(sign)0xAA_BB",
                 "let octal = \(sign)0o21",
                 "let octal = \(sign)0o21_1",
-                "let exp = \(sign)1_000_000.000_000e2"
+                "let exp = \(sign)1_000_000.000_000e2",
+                "let foo: Double = \(sign)(200)",
+                "let foo: Double = \(sign)(200 / 447.214)"
             ]
         }
     }()
 
-    static let triggeringExamples = makeTriggeringExamples(signs: ["↓-", "+↓", "↓"])
+    static let triggeringExamples = makeTriggeringExamples(signs: ["↓-", "+↓", "↓"]) +
+        makeTriggeringExamplesWithParentheses()
 
     static let corrections = makeCorrections(signs: [("↓-", "-"), ("+↓", "+"), ("↓", "")])
 
@@ -33,6 +36,17 @@ internal struct NumberSeparatorRuleExamples {
                 "let foo = \(sign)1.0001",
                 "let foo = \(sign)1_000_000.000000_1",
                 "let foo = \(sign)1000000.000000_1"
+            ]
+        }
+    }
+
+    private static func makeTriggeringExamplesWithParentheses() -> [String] {
+        let signsWithParenthesisAndViolation = ["↓-(", "+(↓", "(↓"]
+        return signsWithParenthesisAndViolation.flatMap { (sign: String) -> [String] in
+            [
+                "let foo: Double = \(sign)100000)",
+                "let foo: Double = \(sign)10.000000_1)",
+                "let foo: Double = \(sign)123456 / ↓447.214214)"
             ]
         }
     }

@@ -84,7 +84,7 @@ public struct ExplicitSelfRule: CorrectableRule, ConfigurationProviderRule, Anal
         requiresFileOnDisk: true
     )
 
-    public func validate(file: File, compilerArguments: [String]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation] {
         return violationRanges(in: file, compilerArguments: compilerArguments).map {
             StyleViolation(ruleDescription: type(of: self).description,
                            severity: configuration.severity,
@@ -92,7 +92,7 @@ public struct ExplicitSelfRule: CorrectableRule, ConfigurationProviderRule, Anal
         }
     }
 
-    public func correct(file: File, compilerArguments: [String]) -> [Correction] {
+    public func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
         let violations = violationRanges(in: file, compilerArguments: compilerArguments)
         let matches = file.ruleEnabled(violatingRanges: violations, for: self)
         if matches.isEmpty { return [] }
@@ -109,7 +109,7 @@ public struct ExplicitSelfRule: CorrectableRule, ConfigurationProviderRule, Anal
         return corrections
     }
 
-    private func violationRanges(in file: File, compilerArguments: [String]) -> [NSRange] {
+    private func violationRanges(in file: SwiftLintFile, compilerArguments: [String]) -> [NSRange] {
         guard !compilerArguments.isEmpty else {
             queuedPrintError("""
                 Attempted to lint file at path '\(file.path ?? "...")' with the \
@@ -137,7 +137,7 @@ public struct ExplicitSelfRule: CorrectableRule, ConfigurationProviderRule, Anal
             return []
         }
 
-        let contents = file.contents.bridge()
+        let contents = file.stringView
 
         return cursorsMissingExplicitSelf.compactMap { cursorInfo in
             guard let byteOffset = cursorInfo["swiftlint.offset"] as? Int64 else {
@@ -155,11 +155,11 @@ private let kindsToFind: Set = [
     "source.lang.swift.ref.var.instance"
 ]
 
-private extension File {
+private extension SwiftLintFile {
     func allCursorInfo(compilerArguments: [String], atByteOffsets byteOffsets: [Int]) throws
         -> [[String: SourceKitRepresentable]] {
         return try byteOffsets.compactMap { offset in
-            if contents.bridge().substringWithByteRange(start: offset - 1, length: 1)! == "." { return nil }
+            if stringView.substringWithByteRange(start: offset - 1, length: 1)! == "." { return nil }
             var cursorInfo = try Request.cursorInfo(file: self.path!, offset: Int64(offset),
                                                     arguments: compilerArguments).sendIfNotDisabled()
             cursorInfo["swiftlint.offset"] = Int64(offset)
@@ -168,10 +168,10 @@ private extension File {
     }
 }
 
-private extension NSString {
+private extension StringView {
     func byteOffset(forLine line: Int, column: Int) -> Int {
         var byteOffset = 0
-        for line in lines()[..<(line - 1)] {
+        for line in lines[..<(line - 1)] {
             byteOffset += line.byteRange.length
         }
         return byteOffset + column - 1
@@ -194,9 +194,9 @@ private extension NSString {
     }
 }
 
-private func binaryOffsets(file: File, compilerArguments: [String]) throws -> [Int] {
+private func binaryOffsets(file: SwiftLintFile, compilerArguments: [String]) throws -> [Int] {
     let absoluteFile = file.path!.bridge().absolutePathRepresentation()
     let index = try Request.index(file: absoluteFile, arguments: compilerArguments).sendIfNotDisabled()
-    let binaryOffsets = file.contents.bridge().recursiveByteOffsets(index)
+    let binaryOffsets = file.stringView.recursiveByteOffsets(index)
     return binaryOffsets.sorted()
 }

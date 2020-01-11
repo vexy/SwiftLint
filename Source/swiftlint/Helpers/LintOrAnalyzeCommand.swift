@@ -1,8 +1,6 @@
 import Commandant
 import Dispatch
 import Foundation
-import Result
-import SourceKittenFramework
 import SwiftLintFramework
 
 enum LintOrAnalyzeMode {
@@ -23,15 +21,16 @@ struct LintOrAnalyzeCommand {
         var fileBenchmark = Benchmark(name: "files")
         var ruleBenchmark = Benchmark(name: "rules")
         var violations = [StyleViolation]()
+        let storage = RuleStorage()
         let configuration = Configuration(options: options)
         let reporter = reporterFrom(optionsReporter: options.reporter, configuration: configuration)
         let cache = options.ignoreCache ? nil : LinterCache(configuration: configuration)
         let visitorMutationQueue = DispatchQueue(label: "io.realm.swiftlint.lintVisitorMutation")
-        return configuration.visitLintableFiles(options: options, cache: cache) { linter in
+        return configuration.visitLintableFiles(options: options, cache: cache, storage: storage) { linter in
             let currentViolations: [StyleViolation]
             if options.benchmark {
                 let start = Date()
-                let (violationsBeforeLeniency, currentRuleTimes) = linter.styleViolationsAndRuleTimes
+                let (violationsBeforeLeniency, currentRuleTimes) = linter.styleViolationsAndRuleTimes(using: storage)
                 currentViolations = applyLeniency(options: options, violations: violationsBeforeLeniency)
                 visitorMutationQueue.sync {
                     fileBenchmark.record(file: linter.file, from: start)
@@ -39,7 +38,7 @@ struct LintOrAnalyzeCommand {
                     violations += currentViolations
                 }
             } else {
-                currentViolations = applyLeniency(options: options, violations: linter.styleViolations)
+                currentViolations = applyLeniency(options: options, violations: linter.styleViolations(using: storage))
                 visitorMutationQueue.sync {
                     violations += currentViolations
                 }
@@ -78,7 +77,7 @@ struct LintOrAnalyzeCommand {
         return .success(())
     }
 
-    private static func printStatus(violations: [StyleViolation], files: [File], serious: Int, verb: String) {
+    private static func printStatus(violations: [StyleViolation], files: [SwiftLintFile], serious: Int, verb: String) {
         let pluralSuffix = { (collection: [Any]) -> String in
             return collection.count != 1 ? "s" : ""
         }
@@ -143,6 +142,7 @@ struct LintOrAnalyzeOptions {
     let enableAllRules: Bool
     let autocorrect: Bool
     let compilerLogPath: String
+    let compileCommands: String
 
     init(_ options: LintOptions) {
         mode = .lint
@@ -161,6 +161,7 @@ struct LintOrAnalyzeOptions {
         enableAllRules = options.enableAllRules
         autocorrect = false
         compilerLogPath = ""
+        compileCommands = ""
     }
 
     init(_ options: AnalyzeOptions) {
@@ -180,6 +181,7 @@ struct LintOrAnalyzeOptions {
         enableAllRules = options.enableAllRules
         autocorrect = options.autocorrect
         compilerLogPath = options.compilerLogPath
+        compileCommands = options.compileCommands
     }
 
     var verb: String {

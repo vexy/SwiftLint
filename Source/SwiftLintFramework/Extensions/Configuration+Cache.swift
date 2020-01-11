@@ -14,7 +14,7 @@ private extension String {
         CC_MD5_Update(context, self, CC_LONG(lengthOfBytes(using: .utf8)))
         CC_MD5_Final(&digest, context)
         context.deallocate()
-        return digest.reduce("") { $0 + String(format: "%02x", $1) }
+        return digest.reduce(into: "") { $0.append(String(format: "%02x", $1)) }
     }
 }
 #endif
@@ -37,6 +37,8 @@ extension Configuration {
         return cachedConfigurationsByPath[path]
     }
 
+    /// Returns a copy of the current `Configuration` with its `computedCacheDescription` property set to the value of
+    /// `cacheDescription`, which is expensive to compute.
     public func withPrecomputedCacheDescription() -> Configuration {
         var result = self
         result.computedCacheDescription = result.cacheDescription
@@ -87,6 +89,6 @@ extension Configuration {
             queuedPrintError("Error while creating cache: " + error.localizedDescription)
         }
 
-        return folder.appendingPathComponent("cache.json")
+        return folder
     }
 }

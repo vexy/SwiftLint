@@ -22,12 +22,12 @@ public struct DuplicateImportsRule: ConfigurationProviderRule, AutomaticTestable
         triggeringExamples: DuplicateImportsRuleExamples.triggeringExamples
     )
 
-    private func rangesInConditionalCompilation(file: File) -> [NSRange] {
-        let contents = file.contents.bridge()
+    private func rangesInConditionalCompilation(file: SwiftLintFile) -> [NSRange] {
+        let contents = file.stringView
 
         let ranges = file.syntaxMap.tokens
-            .filter { SyntaxKind(rawValue: $0.type) == .buildconfigKeyword }
-            .map { NSRange(location: $0.offset, length: $0.length) }
+            .filter { $0.kind == .buildconfigKeyword }
+            .map { $0.range }
             .filter { range in
                 let keyword = contents.substringWithByteRange(start: range.location, length: range.length)
                 return ["#if", "#endif"].contains(keyword)
@@ -38,8 +38,8 @@ public struct DuplicateImportsRule: ConfigurationProviderRule, AutomaticTestable
         }
     }
 
-    public func validate(file: File) -> [StyleViolation] {
-        let contents = file.contents.bridge()
+    public func validate(file: SwiftLintFile) -> [StyleViolation] {
+        let contents = file.stringView
 
         let ignoredRanges = self.rangesInConditionalCompilation(file: file)
 
@@ -55,7 +55,7 @@ public struct DuplicateImportsRule: ConfigurationProviderRule, AutomaticTestable
                 return !importRange.intersects(ignoredRanges)
             }
 
-        let lines = contents.lines()
+        let lines = file.lines
 
         let importLines: [Line] = importRanges.compactMap { range in
             guard let line = contents.lineAndCharacter(forByteOffset: range.location)?.line

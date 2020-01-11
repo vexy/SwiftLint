@@ -15,9 +15,9 @@ public struct SwitchCaseAlignmentRule: ASTRule, ConfigurationProviderRule {
         triggeringExamples: Examples(indentedCases: false).triggeringExamples
     )
 
-    public func validate(file: File, kind: StatementKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
-        let contents = file.contents.bridge()
+    public func validate(file: SwiftLintFile, kind: StatementKind,
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
+        let contents = file.stringView
 
         guard kind == .switch,
               let offset = dictionary.offset,
@@ -27,7 +27,7 @@ public struct SwitchCaseAlignmentRule: ASTRule, ConfigurationProviderRule {
 
         let caseStatements = dictionary.substructure.filter { subDict in
             // includes both `case` and `default` statements
-            return subDict.kind.flatMap(StatementKind.init) == .case
+            return subDict.statementKind == .case
         }
 
         if caseStatements.isEmpty {

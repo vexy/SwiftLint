@@ -1,14 +1,15 @@
+/// A configuration value for a rule to allow users to modify its behavior.
 public protocol RuleConfiguration {
+    /// A human-readable description for this configuration and its applied values.
     var consoleDescription: String { get }
 
+    /// Apply an untyped configuration to the current value.
+    ///
+    /// - throws: Throws if the configuration is not in the expected format.
     mutating func apply(configuration: Any) throws
-    func isEqualTo(_ ruleConfiguration: RuleConfiguration) -> Bool
-}
 
-extension RuleConfiguration {
-    internal var cacheDescription: String {
-        return (self as? CacheDescriptionProvider)?.cacheDescription ?? consoleDescription
-    }
+    /// Whether the specified configuration is equivalent to the current value.
+    func isEqualTo(_ ruleConfiguration: RuleConfiguration) -> Bool
 }
 
 public extension RuleConfiguration where Self: Equatable {

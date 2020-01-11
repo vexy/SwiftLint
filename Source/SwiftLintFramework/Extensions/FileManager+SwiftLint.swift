@@ -1,8 +1,24 @@
 import Foundation
 
+/// An interface for enumerating files that can be linted by SwiftLint.
 public protocol LintableFileManager {
-    func filesToLint(inPath: String, rootDirectory: String?) -> [String]
-    func modificationDate(forFileAtPath: String) -> Date?
+    /// Returns all files that can be linted in the specified path. If the path is relative, it will be appended to the
+    /// specified root path, or currentt working directory if no root directory is specified.
+    ///
+    /// - parameter path:          The path in which lintable files should be found.
+    /// - parameter rootDirectory: The parent directory for the specified path. If none is provided, the current working
+    ///                            directory will be used.
+    ///
+    /// - returns: Files to lint.
+    func filesToLint(inPath path: String, rootDirectory: String?) -> [String]
+
+    /// Returns the date when the file at the specified path was last modified. Returns `nil` if the file cannot be
+    /// found or its last modification date cannot be determined.
+    ///
+    /// - parameter path: The file whose modification date should be determined.
+    ///
+    /// - returns: A date, if one was determined.
+    func modificationDate(forFileAtPath path: String) -> Date?
 }
 
 extension FileManager: LintableFileManager {
@@ -17,19 +33,11 @@ extension FileManager: LintableFileManager {
             return [absolutePath]
         }
 
-#if os(Linux)
-        return enumerator(atPath: absolutePath)?.compactMap { element -> String? in
-            guard let element = element as? String, element.bridge().isSwiftFile() else { return nil }
-            let absoluteElementPath = absolutePath.bridge().appendingPathComponent(element)
-            return absoluteElementPath.isFile ? absoluteElementPath : nil
-        } ?? []
-#else
         return subpaths(atPath: absolutePath)?.parallelCompactMap { element -> String? in
             guard element.bridge().isSwiftFile() else { return nil }
             let absoluteElementPath = absolutePath.bridge().appendingPathComponent(element)
             return absoluteElementPath.isFile ? absoluteElementPath : nil
         } ?? []
-#endif
     }
 
     public func modificationDate(forFileAtPath path: String) -> Date? {

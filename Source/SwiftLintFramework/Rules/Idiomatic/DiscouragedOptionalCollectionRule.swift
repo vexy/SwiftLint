@@ -1,4 +1,3 @@
-import Foundation
 import SourceKittenFramework
 
 public struct DiscouragedOptionalCollectionRule: ASTRule, OptInRule, ConfigurationProviderRule, AutomaticTestableRule {
@@ -15,9 +14,9 @@ public struct DiscouragedOptionalCollectionRule: ASTRule, OptInRule, Configurati
         triggeringExamples: DiscouragedOptionalCollectionExamples.triggeringExamples
     )
 
-    public func validate(file: File,
+    public func validate(file: SwiftLintFile,
                          kind: SwiftDeclarationKind,
-                         dictionary: [String: SourceKitRepresentable]) -> [StyleViolation] {
+                         dictionary: SourceKittenDictionary) -> [StyleViolation] {
         let offsets = variableViolations(file: file, kind: kind, dictionary: dictionary) +
             functionViolations(file: file, kind: kind, dictionary: dictionary)
 
@@ -30,9 +29,9 @@ public struct DiscouragedOptionalCollectionRule: ASTRule, OptInRule, Configurati
 
     // MARK: - Private
 
-    private func variableViolations(file: File,
+    private func variableViolations(file: SwiftLintFile,
                                     kind: SwiftDeclarationKind,
-                                    dictionary: [String: SourceKitRepresentable]) -> [Int] {
+                                    dictionary: SourceKittenDictionary) -> [Int] {
         guard
             SwiftDeclarationKind.variableKinds.contains(kind),
             let offset = dictionary.offset,
@@ -41,9 +40,9 @@ public struct DiscouragedOptionalCollectionRule: ASTRule, OptInRule, Configurati
         return typeName.optionalCollectionRanges().map { _ in offset }
     }
 
-    private func functionViolations(file: File,
+    private func functionViolations(file: SwiftLintFile,
                                     kind: SwiftDeclarationKind,
-                                    dictionary: [String: SourceKitRepresentable]) -> [Int] {
+                                    dictionary: SourceKittenDictionary) -> [Int] {
         guard
             SwiftDeclarationKind.functionKinds.contains(kind),
             let nameOffset = dictionary.nameOffset,
@@ -52,8 +51,8 @@ public struct DiscouragedOptionalCollectionRule: ASTRule, OptInRule, Configurati
             let offset = dictionary.offset,
             case let start = nameOffset + nameLength,
             case let end = dictionary.bodyOffset ?? offset + length,
-            case let contents = file.contents.bridge(),
-            let range = contents.byteRangeToNSRange(start: start, length: end - start),
+            case let contents = file.stringView,
+            let range = file.stringView.byteRangeToNSRange(start: start, length: end - start),
             let match = file.match(pattern: "->\\s*(.*?)\\{", excludingSyntaxKinds: excludingKinds, range: range).first
             else { return [] }
 
